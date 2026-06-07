@@ -3,7 +3,10 @@ setlocal EnableDelayedExpansion
 
 :: ── Configurações fixas ────────────────────────────────────────────────────
 set REPO=chemicalgroove-mingas/sisbanda-agent
-set DOWNLOAD_URL=https://github.com/%REPO%/releases/latest/download/SisbandaAgentSetup.exe
+set ASSET_NAME=SisbandaAgentSetup.exe
+set ASSET_PATH=dist\SisbandaAgentSetup.exe
+set DOWNLOAD_URL=https://github.com/%REPO%/releases/latest/download/%ASSET_NAME%
+set API_URL=https://sisbanda-backend.onrender.com/api/agent/download
 set ENV_FILE=..\backend\.env
 
 :: ── Validação do argumento ─────────────────────────────────────────────────
@@ -16,23 +19,24 @@ if "%~1"=="" (
 )
 
 set VERSION=%~1
+set TAG=v%VERSION%
 
 echo.
 echo  ============================================
-echo    SISBANDA Agent  -  Release v%VERSION%
+echo    SISBANDA Agent  -  Release %TAG%
 echo  ============================================
 echo.
 
 :: ── Etapa 1: Atualizar AGENT_VERSION no backend .env ──────────────────────
-echo  [1/4] Atualizando AGENT_VERSION no backend...
+echo  [1/5] Atualizando AGENT_VERSION no backend...
 
 if not exist "%ENV_FILE%" (
-    echo  AVISO: %ENV_FILE% nao encontrado. Pulando.
+    echo  AVISO: %ENV_FILE% nao encontrado. Pulando atualizacao do .env.
 ) else (
     set TMPFILE=%TEMP%\sisbanda_env_%RANDOM%.txt
     set FOUND=0
 
-    for /f "usebackq delims=" %%L in ("%ENV_FILE%") do (
+    for /f "usebackq tokens=* delims=" %%L in ("%ENV_FILE%") do (
         set "LINE=%%L"
         echo !LINE! | findstr /B "AGENT_VERSION=" >nul 2>&1
         if !errorlevel!==0 (
@@ -53,45 +57,74 @@ if not exist "%ENV_FILE%" (
 
 :: ── Etapa 2: Build ─────────────────────────────────────────────────────────
 echo.
-echo  [2/4] Gerando instalador (build.bat)...
+echo  [2/5] Gerando instalador (build.bat)...
+
 call build.bat
 if errorlevel 1 (
-    echo  ERRO: build falhou.
+    echo  ERRO: build.bat falhou. Abortando release.
     exit /b 1
 )
 
-if not exist "dist\SisbandaAgentSetup.exe" (
-    echo  ERRO: dist\SisbandaAgentSetup.exe nao encontrado apos o build.
+if not exist "%ASSET_PATH%" (
+    echo  ERRO: %ASSET_PATH% nao encontrado apos o build.
     exit /b 1
 )
-echo  OK: dist\SisbandaAgentSetup.exe gerado.
+echo  OK: %ASSET_PATH% verificado.
 
-:: ── Etapa 3: Publicar GitHub Release ──────────────────────────────────────
+:: ── Etapa 3: Publicar ou atualizar Release no GitHub ───────────────────────
 echo.
-echo  [3/4] Publicando Release v%VERSION% no GitHub...
+echo  [3/5] Publicando Release %TAG% no GitHub...
 
-gh release create "v%VERSION%" ^
-    "dist\SisbandaAgentSetup.exe#SisbandaAgentSetup.exe" ^
-    --title "SISBANDA Agent %VERSION%" ^
-    --notes "Versao %VERSION% do SISBANDA Agent." ^
-    --repo "%REPO%"
-
+gh release view "%TAG%" --repo "%REPO%" >nul 2>&1
 if errorlevel 1 (
-    echo  ERRO: falha ao criar Release.
-    echo  Verifique se o GitHub CLI esta autenticado: gh auth login
+    :: Release nao existe — criar
+    echo  INFO: Release %TAG% nao existe. Criando...
+    gh release create "%TAG%" ^
+        "%ASSET_PATH%#%ASSET_NAME%" ^
+        --title "SISBANDA Agent %VERSION%" ^
+        --notes "Versao %VERSION% do SISBANDA Agent." ^
+        --repo "%REPO%"
+    if errorlevel 1 (
+        echo  ERRO: falha ao criar Release %TAG%.
+        echo  Verifique se o GitHub CLI esta autenticado: gh auth login
+        exit /b 1
+    )
+    echo  OK: Release %TAG% criada.
+) else (
+    :: Release ja existe — substituir asset
+    echo  INFO: Release %TAG% ja existe. Atualizando asset...
+    gh release upload "%TAG%" ^
+        "%ASSET_PATH%#%ASSET_NAME%" ^
+        --clobber ^
+        --repo "%REPO%"
+    if errorlevel 1 (
+        echo  ERRO: falha ao atualizar asset na Release %TAG%.
+        exit /b 1
+    )
+    echo  OK: Asset substituido na Release %TAG%.
+)
+
+:: ── Etapa 4: Validar asset no GitHub ───────────────────────────────────────
+echo.
+echo  [4/5] Validando asset no GitHub...
+
+gh release view "%TAG%" --repo "%REPO%" | findstr "%ASSET_NAME%" >nul 2>&1
+if errorlevel 1 (
+    echo  ERRO: %ASSET_NAME% NAO encontrado na Release %TAG% apos upload.
+    echo  Verifique manualmente: https://github.com/%REPO%/releases/tag/%TAG%
     exit /b 1
 )
-echo  OK: Release v%VERSION% publicada no GitHub.
+echo  OK: %ASSET_NAME% confirmado na Release %TAG%.
 
-:: ── Etapa 4: Commit e push ─────────────────────────────────────────────────
+:: ── Etapa 5: Commit e push ─────────────────────────────────────────────────
 echo.
-echo  [4/4] Commitando e fazendo push...
+echo  [5/5] Commitando e fazendo push...
 
 git add .
 
 git diff --cached --quiet
 if errorlevel 1 (
-    git commit -m "chore: release Agent v%VERSION%"
+    git commit -m "chore: release Agent %TAG%"
     git push origin main
     if errorlevel 1 (
         echo  AVISO: git push falhou. Verifique sua conexao ou permissoes.
@@ -99,18 +132,27 @@ if errorlevel 1 (
         echo  OK: codigo enviado para o repositorio.
     )
 ) else (
-    echo  INFO: Nenhuma alteracao para commit. Push ignorado.
+    echo  INFO: Nenhuma alteracao local. Push ignorado.
 )
 
 :: ── Concluido ──────────────────────────────────────────────────────────────
 echo.
-echo  ============================================
-echo    Release v%VERSION% concluida com sucesso!
-echo  ============================================
+echo  ====================================
+echo    SISBANDA AGENT PUBLICADO COM SUCESSO
+echo  ====================================
 echo.
-echo  URL de download (cadastrar no Render):
+echo  Versao:    %TAG%
 echo.
-echo    AGENT_DOWNLOAD_URL = %DOWNLOAD_URL%
+echo  Download:
+echo    %DOWNLOAD_URL%
+echo.
+echo  API:
+echo    %API_URL%
+echo.
+echo  Validar release:
+echo    https://github.com/%REPO%/releases/tag/%TAG%
+echo.
+echo  ====================================
 echo.
 
 endlocal

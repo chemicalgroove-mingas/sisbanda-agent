@@ -29,6 +29,7 @@
       "icon": "assets/icon.ico"
     },
     "nsis": {
+      "artifactName": "SisbandaAgentSetup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
