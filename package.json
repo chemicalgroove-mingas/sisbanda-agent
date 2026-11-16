@@ -45,5 +45,8 @@
       "assets/**/*",
       "node_modules/**/*"
     ]
+  },
+  "allowScripts": {
+    "electron@30.5.1": true
   }
 }
