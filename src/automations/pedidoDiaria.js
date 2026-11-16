@@ -1,6 +1,6 @@
 'use strict';
 
-const { chromium } = require('playwright');
+const { launchNavegador } = require('../services/navegador');
 const { setTimeout: sleep } = require('timers/promises');
 const path = require('path');
 const os   = require('os');
@@ -348,7 +348,7 @@ async function abrirJanelaIntegrante(pedido, integrante, onStatus) {
   const nomeCompleto = integrante.musico ? integrante.musico.nome : integrante.nome;
   let browser;
   try {
-    browser = await chromium.launch({ headless: false, args: ['--start-maximized'] });
+    ({ browser } = await launchNavegador({ headless: false, args: ['--start-maximized'] }));
     const context = await browser.newContext({ viewport: null });
     const page    = await context.newPage();
 

@@ -5,9 +5,10 @@ const router  = express.Router();
 const https   = require('https');
 const fs      = require('fs');
 const os      = require('os');
-const { chromium } = require('playwright');
 const { CONFIG_DIR } = require('../config');
 const { listModules } = require('../modules');
+const { VERSION } = require('../versao');
+const { verificarNavegador } = require('../services/navegador');
 
 async function checkInternet() {
   return new Promise(resolve => {
@@ -15,14 +16,6 @@ async function checkInternet() {
       .on('error', () => resolve(false))
       .on('timeout', () => resolve(false));
   });
-}
-
-async function checkChromium() {
-  try {
-    const b = await chromium.launch({ headless: true });
-    await b.close();
-    return true;
-  } catch { return false; }
 }
 
 function diskFreeMb() {
@@ -35,7 +28,8 @@ function diskFreeMb() {
 
 // GET /diagnostics
 router.get('/diagnostics', async (_req, res) => {
-  const [internet, chromiumOk] = await Promise.all([checkInternet(), checkChromium()]);
+  // Sem cache: o diagnóstico sempre lança o navegador de verdade.
+  const [internet, nav] = await Promise.all([checkInternet(), verificarNavegador()]);
 
   const logsDir = `${CONFIG_DIR}\\logs`;
   const logsOk  = fs.existsSync(logsDir);
@@ -49,8 +43,13 @@ router.get('/diagnostics', async (_req, res) => {
 
   res.json({
     agent:           true,
+    version:         VERSION,
     playwright:      true,
-    chromium:        chromiumOk,
+    // `chromium` mantido por compatibilidade com o painel do site; significa
+    // "há navegador compatível" (Edge ou Chrome), não Chromium empacotado.
+    chromium:        nav.ok,
+    browserChannel:  nav.canal,
+    ...(nav.ok ? {} : { browserError: nav.erro, browserAttempts: nav.tentativas }),
     internet,
     writePermission: writeOk,
     logsFolder:      logsOk,

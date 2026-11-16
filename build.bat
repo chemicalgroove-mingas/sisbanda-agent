@@ -7,13 +7,15 @@ echo    SISBANDA Agent - Build para Windows
 echo  ==========================================
 echo.
 
-echo  [1/4] Instalando dependencias...
-call npm install
+echo  [1/4] Instalando dependencias (package-lock)...
+call npm ci
 if errorlevel 1 goto erro
 
+:: Nao ha passo de navegador: o Agent usa o Edge/Chrome do proprio Windows
+:: (src/services/navegador.js). Nenhum Chromium e baixado nem empacotado.
 echo.
-echo  [2/4] Instalando Chromium do Playwright...
-call npx playwright install chromium
+echo  [2/4] Rodando testes...
+call npm test
 if errorlevel 1 goto erro
 
 echo.

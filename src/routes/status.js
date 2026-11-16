@@ -2,23 +2,19 @@
 
 const express  = require('express');
 const router   = express.Router();
-const { chromium } = require('playwright');
-const { loadConfig }  = require('../config');
+const { VERSION } = require('../versao');
+const { verificarNavegador } = require('../services/navegador');
 const { isBusy, listJobs } = require('../services/jobQueue');
 
-const VERSION = loadConfig().agentVersion;
-
-let browserInstalled = null;
+// O site consulta /status a cada 30 s. Só o SUCESSO fica em cache: se o
+// navegador faltar, a próxima consulta tenta de novo (o usuário pode ter
+// instalado/atualizado o Edge nesse meio-tempo).
+let navegadorOk = null;
 async function checkBrowser() {
-  if (browserInstalled !== null) return browserInstalled;
-  try {
-    const b = await chromium.launch({ headless: true });
-    await b.close();
-    browserInstalled = true;
-  } catch {
-    browserInstalled = false;
-  }
-  return browserInstalled;
+  if (navegadorOk) return navegadorOk;
+  const r = await verificarNavegador();
+  if (r.ok) navegadorOk = r;
+  return r;
 }
 
 // GET /ping
@@ -28,7 +24,7 @@ router.get('/ping', (_req, res) => {
 
 // GET /status
 router.get('/status', async (_req, res) => {
-  const bOk = await checkBrowser().catch(() => false);
+  const nav = await checkBrowser().catch(() => ({ ok: false, canal: null }));
 
   const jobs   = listJobs();
   const lastDone = jobs.find(j => j.status === 'done' || j.status === 'error');
@@ -37,7 +33,9 @@ router.get('/status', async (_req, res) => {
     agent:            true,
     version:          VERSION,
     playwright:       true,
-    browserInstalled: bOk,
+    browserInstalled: nav.ok,
+    browserChannel:   nav.canal,
+    ...(nav.ok ? {} : { browserError: nav.erro }),
     busy:             isBusy(),
     lastRun:          lastDone?.finishedAt ?? null,
   });
