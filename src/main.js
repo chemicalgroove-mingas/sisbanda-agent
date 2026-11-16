@@ -12,12 +12,8 @@ const { verificarAtualizacao } = require('./services/updater');
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 const LOG_DIR   = path.join(os.homedir(), 'AppData', 'Roaming', 'SisbandaAgent', 'logs');
 
-// Inicialização com o Windows: valor em HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
-// Nome fixo (o mesmo do installer/setup.iss) para o desinstalador saber o que remover.
-// Quando o Windows abre o Agent, ele sobe só na bandeja, sem janela.
-const NOME_INICIALIZACAO = 'SisbandaAgent';
-const ARG_OCULTO         = '--oculto';
-const iniciouOculto      = process.argv.includes(ARG_OCULTO);
+const { ARG_OCULTO, opcoesInicioComWindows } = require('./inicializacao');
+const iniciouOculto = process.argv.includes(ARG_OCULTO);
 
 let win  = null;
 let tray = null;
@@ -58,12 +54,7 @@ function aplicarInicioComWindows(ativo) {
   // Em desenvolvimento (`npm start`) o executável é o electron.exe genérico:
   // registrar isso no Run seria lixo no registro do desenvolvedor.
   if (!app.isPackaged) return;
-  app.setLoginItemSettings({
-    openAtLogin: ativo,
-    name: NOME_INICIALIZACAO,
-    path: process.execPath,
-    args: [ARG_OCULTO],
-  });
+  app.setLoginItemSettings(opcoesInicioComWindows(ativo, process.execPath));
 }
 
 // ── Bandeja do sistema ──────────────────────────────────────────────────────
