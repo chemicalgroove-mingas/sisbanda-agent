@@ -13,8 +13,10 @@ const CADASTRO_URL = 'https://sead.pb.gov.br/sgcda/menu_diaria/menu_diaria.php';
 
 const MSG_SEM_CREDENCIAIS =
   'Credenciais do SEAD não configuradas. Abra a janela do SISBANDA Agent, aba Configuração, e cadastre usuário e senha.';
-const MSG_SEM_REQUISITANTE =
-  'Requisitante não configurado. Abra a janela do SISBANDA Agent, aba Configuração, e informe o requisitante como aparece no SEAD.';
+
+// Mesmos tempos da automação do Linux (backend/src/lib/automacaoDiaria.js).
+const TIMEOUT_AUTOCOMPLETE_MS = 120000;   // requisitante e requisitado
+const TIMEOUT_URL_MENU_MS     = 20000;    // login: espera pela URL menu_diaria
 
 function textoParaAutocomplete(s) {
   s = String(s || '').trim();
@@ -64,40 +66,22 @@ function partesDataHora(iso) {
   return { data, hora: `${hh}:${mm}` };
 }
 
-// ── Regras de preenchimento (puras, testadas) ────────────────────────────────
-
-/** Justificativa digitada no pedido > justificativa padrão do Agent. */
-function escolherJustificativa(pedido, exec) {
-  const digitada = String(pedido.justificativa || '').trim();
-  return digitada || String(exec.justificativaPadrao || '').trim();
-}
-
-/** Lotação do integrante > cidade de origem padrão do Agent. */
-function escolherCidadeOrigem(integrante, exec) {
-  const lotacao = String(integrante.lotacao || '').trim();
-  if (lotacao) return { cidade: lotacao, fonte: 'lotacao' };
-  const padrao = String(exec.cidadeOrigemPadrao || '').trim();
-  if (padrao) return { cidade: padrao, fonte: 'padrao' };
-  return { cidade: '', fonte: null };
-}
+// ── Preparação (pura, testada) ───────────────────────────────────────────────
 
 /**
- * Lê cofre e configuração ANTES de qualquer navegador abrir. Falta de
- * credencial ou de requisitante encerra aqui, com mensagem clara.
+ * Lê o cofre ANTES de qualquer navegador abrir. Sem credencial, encerra aqui,
+ * com mensagem clara. Requisitante, objetivo, justificativa e cidade de origem
+ * NÃO vêm daqui: chegam no payload (docs/contrato-pedido-diaria.md).
+ * Do config.json sai só a opção técnica de janelas sequenciais, o equivalente à
+ * variável SEAD_JANELAS_SEQUENCIAIS da máquina que abria o navegador no Linux.
  */
 function prepararExecucao({ cofre, config }) {
   if (!cofre.disponivel()) throw new Error(MSG_INDISPONIVEL);
   const credenciais = cofre.lerParaAutomacao();
   if (!credenciais) throw new Error(MSG_SEM_CREDENCIAIS);
-  const requisitante = String(config.seadRequisitante || '').trim();
-  if (!requisitante) throw new Error(MSG_SEM_REQUISITANTE);
   return {
     credenciais,
-    requisitante,
-    objetivo:            String(config.seadObjetivo || '').trim(),
-    justificativaPadrao: String(config.seadJustificativa || ''),
-    cidadeOrigemPadrao:  String(config.seadCidadeOrigemPadrao || ''),
-    janelaSequencial:    !!config.janelaSequencial,
+    janelaSequencial: !!config.janelaSequencial,
   };
 }
 
@@ -151,9 +135,9 @@ async function clicarSugestaoAutocomplete(ctx, frame, page, ref) {
   return false;
 }
 
-async function aguardarAutocomplete(ctx, frame, page, ref, ms = 90000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
+async function aguardarAutocomplete(ctx, frame, page, ref, ms = TIMEOUT_AUTOCOMPLETE_MS) {
+  const t0 = ctx.agora();
+  while (ctx.agora() - t0 < ms) {
     if (await clicarSugestaoAutocomplete(ctx, frame, page, ref)) return;
     await ctx.esperar(500);
   }
@@ -172,17 +156,27 @@ async function login(page, { usuario, senha }) {
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {});
 
-  await page.fill('input[type="text"]:visible, input[name*="login"]:visible', usuario).catch(async () => {
+  await page.fill('input[type="text"]:visible, input[name*="login"]:visible, input[name*="user"]:visible', usuario).catch(async () => {
     const inputs = await page.$$('input[type="text"]');
     if (inputs[0]) await inputs[0].fill(usuario);
   });
   await page.fill('input[type="password"]:visible', senha);
 
-  const btn = page.locator('input[type="submit"], button[type="submit"], input[value*="Login"]').first();
+  const btn = page.locator(
+    'input[type="submit"], button[type="submit"], button:has-text("Login"), input[value*="Login"]'
+  ).first();
   try { await btn.click({ timeout: 8000 }); } catch { await page.keyboard.press('Enter'); }
 
   await page.waitForFunction(() => !window.location.href.includes('app_Login'), { timeout: 60000 }).catch(() => {});
+
+  await page.waitForLoadState('load', { timeout: 60000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 90000 }).catch(() => {});
+
+  // SEAD lento: o login ainda pode estar redirecionando. Espera a URL do menu
+  // antes de desistir e ir direto ao cadastro (como no Linux).
+  if (page.url().includes('app_Login')) {
+    await page.waitForURL(/menu_diaria/i, { timeout: TIMEOUT_URL_MENU_MS }).catch(() => {});
+  }
 
   if (page.url().includes('app_Login')) {
     await page.goto(CADASTRO_URL, { waitUntil: 'domcontentloaded' });
@@ -196,6 +190,7 @@ async function posLogin(ctx, page) {
   if (ok) { await esperarMenu(page); return; }
 
   await page.goto(CADASTRO_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.waitForLoadState('load', { timeout: 60000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 90000 }).catch(() => {});
   await ctx.esperar(600);
 
@@ -208,7 +203,7 @@ async function posLogin(ctx, page) {
 }
 
 async function abrirCadastroDiaria(ctx, page) {
-  await page.click('#item_1, a[id="item_1"]').catch(() => page.click('text=CADASTRAR'));
+  await page.click('#item_1, a[id="item_1"], a[title=""][onmouseover*="item_1"]').catch(() => page.click('text=CADASTRAR'));
   await ctx.esperar(600);
   await page.click('#item_10, a[id="item_10"]').catch(() => page.click('text=Cadastro de Diária'));
   await ctx.esperar(1500);
@@ -226,8 +221,7 @@ async function obterFrame(page) {
   return (await fh.contentFrame()) || page.mainFrame();
 }
 
-async function preencherRequisitante(ctx, page) {
-  const { requisitante } = ctx.exec;
+async function preencherRequisitante(ctx, page, requisitante) {
   const frame = await obterFrame(page);
   const campo = frame.locator('#id_ac_id_servidor_solicit');
   await campo.waitFor({ state: 'visible', timeout: 20000 });
@@ -241,7 +235,10 @@ async function preencherRequisitante(ctx, page) {
 async function preencherRequisitado(ctx, page, nomeCompleto) {
   const frame = await obterFrame(page);
   const campo = frame.locator(
-    'input[name="id_servidor_autocomp"], input.sc-ui-autocomp-id_servidor'
+    'input[name="id_servidor_autocomp"], ' +
+      'input.sc-ui-autocomp-id_servidor.ui-autocomplete-input, ' +
+      'input.sc-ui-autocomp-id_servidor.sc-js-input, ' +
+      'input.sc-ui-autocomp-id_servidor'
   ).first();
   await campo.waitFor({ state: 'visible', timeout: 20000 });
   await campo.click();
@@ -252,7 +249,7 @@ async function preencherRequisitado(ctx, page, nomeCompleto) {
 }
 
 async function preencherDestino(ctx, page, pedido, cidOrig) {
-  const { objetivo } = ctx.exec;
+  const { objetivo } = pedido;
   const frame = await obterFrame(page);
 
   const aba = frame.getByText(/DIÁRIAS\s*\/\s*DESTINO/i).first();
@@ -283,8 +280,12 @@ async function preencherDestino(ctx, page, pedido, cidOrig) {
   await ctx.esperar(500);
   await selEstOrig.selectOption({ label: 'Paraiba' }).catch(() => selecionarPorTexto(ctx, frame, 'ds_est_origem', 'paraiba'));
 
-  // Cidade Origem (lotação do integrante ou cidade padrão do Agent)
+  // Cidade Origem: vem do site (lotação do integrante ou a cidade padrão do site).
+  // Só tenta a primeira palavra se o nome inteiro não achar opção — correção D11:
+  // no Linux a busca por nome não devolvia resultado, e a primeira palavra
+  // sobrescrevia sempre a escolha (ex.: "Santa Rita" → primeira "Santa ...").
   await ctx.esperar(1200);
+  await frame.locator('select[name="ds_cid_origem"]').waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
   await frame.waitForFunction(() => {
     const s = document.querySelector('select[name="ds_cid_origem"]');
     return s && s.options.length > 1;
@@ -315,15 +316,13 @@ async function preencherDestino(ctx, page, pedido, cidOrig) {
     if (!ok) await selecionarPorTexto(ctx, frame, 'ds_cid_destino_pricipal', semAcentos(cidDest).split(/\s+/)[0]);
   }
 
-  // Objetivo
-  if (objetivo) {
-    const selObj = frame.locator('select[name="ds_objetio"]');
-    await selObj.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
-    await selObj.selectOption({ value: objetivo })
-      .catch(() => selObj.selectOption({ label: objetivo })
-      .catch(() => selecionarPorTexto(ctx, frame, 'ds_objetio', objetivo)));
-    await ctx.esperar(500);
-  }
+  // Objetivo (sempre preenchido, como no Linux)
+  const selObj = frame.locator('select[name="ds_objetio"]');
+  await selObj.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
+  await selObj.selectOption({ value: objetivo })
+    .catch(() => selObj.selectOption({ label: objetivo })
+    .catch(() => selecionarPorTexto(ctx, frame, 'ds_objetio', objetivo)));
+  await ctx.esperar(500);
 }
 
 async function preencherJustificativa(ctx, page, texto) {
@@ -421,17 +420,10 @@ async function abrirJanelaIntegrante(ctx, pedido, integrante, onStatus) {
     emitir({ integrante: nomeCompleto, status: 'abrindo' });
     try {
       await abrirCadastroDiaria(ctx, page);
-      await preencherRequisitante(ctx, page);
+      await preencherRequisitante(ctx, page, pedido.requisitante);
       await preencherRequisitado(ctx, page, nomeCompleto);
-
-      const origem = escolherCidadeOrigem(integrante, ctx.exec);
-      if (origem.fonte === 'padrao') {
-        emitir({ integrante: nomeCompleto, status: 'aviso', detalhe: `sem lotação; cidade de origem padrão: ${origem.cidade}` });
-      } else if (!origem.fonte) {
-        emitir({ integrante: nomeCompleto, status: 'aviso', detalhe: 'sem lotação e sem cidade de origem padrão; Cidade Origem fica em branco' });
-      }
-      await preencherDestino(ctx, page, pedido, origem.cidade);
-      await preencherJustificativa(ctx, page, escolherJustificativa(pedido, ctx.exec));
+      await preencherDestino(ctx, page, pedido, integrante.cidadeOrigem);
+      await preencherJustificativa(ctx, page, pedido.justificativa);
       await exibirMensagemFinal(page);
 
       if (await dadosInvalidos(page)) {
@@ -459,7 +451,7 @@ async function abrirJanelaIntegrante(ctx, pedido, integrante, onStatus) {
 /**
  * @param {object} pedidoBruto  payload no contrato de docs/contrato-pedido-diaria.md
  * @param {(ev:object)=>void} onStatus
- * @param {object} [deps]  injeção para testes: { cofre, config, lancar, esperar, dirScreenshots }
+ * @param {object} [deps]  injeção para testes: { cofre, config, lancar, esperar, agora, dirScreenshots }
  * @returns {Promise<{ total: number, comErro: number }>}
  */
 async function lancarDiarias(pedidoBruto, onStatus, deps = {}) {
@@ -467,7 +459,7 @@ async function lancarDiarias(pedidoBruto, onStatus, deps = {}) {
   if (!v.ok) throw new Error(`Pedido inválido: ${v.erros.join(' ')}`);
   const pedido = v.valor;
 
-  // Antes de qualquer navegador: sem credencial ou requisitante, para aqui.
+  // Antes de qualquer navegador: payload fora do contrato ou sem credencial, para aqui.
   const exec = prepararExecucao({
     cofre:  deps.cofre  || obterCofre(),
     config: deps.config || loadConfig(),
@@ -477,6 +469,7 @@ async function lancarDiarias(pedidoBruto, onStatus, deps = {}) {
     exec,
     lancar:         deps.lancar  || launchNavegador,
     esperar:        deps.esperar || sleep,
+    agora:          deps.agora   || Date.now,
     dirScreenshots: deps.dirScreenshots || path.join(CONFIG_DIR, 'screenshots'),
   };
 
@@ -492,9 +485,9 @@ async function lancarDiarias(pedidoBruto, onStatus, deps = {}) {
 module.exports = {
   lancarDiarias,
   prepararExecucao,
-  escolherJustificativa,
-  escolherCidadeOrigem,
   salvarScreenshot,
   MSG_SEM_CREDENCIAIS,
-  MSG_SEM_REQUISITANTE,
+  TIMEOUT_AUTOCOMPLETE_MS,
+  TIMEOUT_URL_MENU_MS,
+  CADASTRO_URL,
 };

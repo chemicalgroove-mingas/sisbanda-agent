@@ -13,7 +13,7 @@ function descreverEvento(ev) {
 module.exports = {
   name:        'pedido-diaria',
   description: 'Pedido automático de diárias no sistema SEAD/PB',
-  version:     '1.1.0',
+  version:     '1.2.0',
   status:      'available',
 
   // Contrato: docs/contrato-pedido-diaria.md. O executor valida antes de criar o job.

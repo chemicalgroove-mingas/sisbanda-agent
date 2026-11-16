@@ -6,7 +6,9 @@ const { VERSION }      = require('../versao');
 const { getUpdateInfo } = require('../services/updater');
 
 // 2: payload do pedido-diaria em docs/contrato-pedido-diaria.md e barreira de origem.
-const PROTOCOL_VERSION = 2;
+// 3: requisitante, objetivo, justificativa e cidade de origem vêm no payload;
+//    o Agent guarda só as credenciais do SEAD.
+const PROTOCOL_VERSION = 3;
 
 // GET /version
 router.get('/version', (_req, res) => {

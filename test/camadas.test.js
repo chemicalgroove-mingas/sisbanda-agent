@@ -15,8 +15,11 @@ process.env.HOME = HOME;
 const CFG_DIR = path.join(HOME, 'AppData', 'Roaming', 'SisbandaAgent');
 fs.mkdirSync(CFG_DIR, { recursive: true });
 // config.json "de versão antiga" com credencial em texto puro.
+// E parâmetros do pedido gravados pela versão 1.1.0, que agora vêm do site.
 fs.writeFileSync(path.join(CFG_DIR, 'config.json'), JSON.stringify({
   port: 0, seadUsuario: 'velho.usuario', seadSenha: 'velha-senha-texto-puro',
+  seadRequisitante: 'REQ VELHO', seadObjetivo: 'OBJ VELHO',
+  seadJustificativa: 'JUST VELHA', seadCidadeOrigemPadrao: 'CIDADE VELHA',
 }));
 // Variáveis de ambiente que versões antigas liam.
 process.env.SEAD_USUARIO = 'usuario-do-ambiente';
@@ -82,11 +85,12 @@ test('automação: eventos de status saem redigidos antes de chegar à fila', as
   const browser = { newContext: async () => ({ newPage: async () => page }), on: () => {}, close: async () => {} };
   const eventos = [];
   await lancarDiarias({
+    requisitante: 'R', objetivo: 'O', justificativa: 'J',
     tipoViagem: 'estadual', destinoUF: 'PB', destinoCidade: 'Campina Grande',
     dataSaida: '2026-11-23T08:00', dataRetorno: '2026-11-23T18:00',
-    integrantes: [{ nome: 'FULANO' }],
+    integrantes: [{ nome: 'FULANO', cidadeOrigem: 'Patos' }],
   }, ev => eventos.push(ev), {
-    cofre, config: { seadRequisitante: 'R' }, lancar: async () => ({ browser }), esperar: async () => {},
+    cofre, config: {}, lancar: async () => ({ browser }), esperar: async () => {},
   });
   const erro = eventos.find(e => e.status === 'erro');
   assert.ok(erro);
@@ -106,8 +110,12 @@ test('config: seadUsuario/seadSenha de config.json antigo e variáveis SEAD_* s�
   const cfg = loadConfig();
   assert.equal('seadUsuario' in cfg, false);
   assert.equal('seadSenha' in cfg, false);
-  assert.equal(cfg.seadRequisitante, '');            // sem nome padrão, sem ambiente
-  assert.equal(JSON.stringify(cfg).includes('ambiente'), false);
+  // Parâmetros do pedido não moram mais no Agent: nem padrão, nem ambiente,
+  // nem o que a 1.1.0 deixou gravado no config.json.
+  for (const k of ['seadRequisitante', 'seadObjetivo', 'seadJustificativa', 'seadCidadeOrigemPadrao']) {
+    assert.equal(k in cfg, false, k);
+  }
+  assert.doesNotMatch(JSON.stringify(cfg), /VELH|ambiente/);
   // atualizarConfig não regrava credencial vinda da tela.
   atualizarConfig({ seadSenha: 'nova', seadRequisitante: 'X' });
   assert.equal(loadConfig().seadSenha, undefined);

@@ -18,7 +18,6 @@ const express = require('express');
 const { registrarIpc, remetenteValido, CANAIS } = require('../src/ipc');
 const { criarCofre } = require('../src/services/credenciais');
 const { criarRouter, prontidao } = require('../src/routes/status');
-const { loadConfig, atualizarConfig } = require('../src/config');
 const { startServer } = require('../src/server');
 
 const SENHA = 'senha-do-ipc-123';
@@ -46,8 +45,6 @@ function montar() {
     janela: () => janela,
     origemUi: () => UI,
     cofre,
-    lerConfig: loadConfig,
-    atualizarConfig,
     enfileirar: (m, p) => { enfileirados.push([m, p]); return { status: 202, body: { jobId: 'job-1' } }; },
   });
   const evento = (over = {}) => ({ sender: webContents, senderFrame: webContents.mainFrame, ...over });
@@ -110,24 +107,15 @@ test('salvar credenciais pelo IPC: a senha nunca volta para a tela', async () =>
   assert.equal(apagado.credenciais.configuradas, false);
 });
 
-test('parâmetros vão para o config.json, só as quatro chaves, e nunca senha', async () => {
-  const { chamar } = montar();
-  const r = await chamar(CANAIS.SALVAR_PARAMETROS, {
-    requisitante: '  FULANA DE TAL  ', cidadeOrigemPadrao: 'Joao Pessoa',
-    objetivo: 'PARTICIPAR DE EVENTO', justificativaPadrao: 'Texto',
-    seadSenha: SENHA, port: 1,
-  });
-  assert.equal(r.ok, true);
-  assert.equal(r.parametros.requisitante, 'FULANA DE TAL');
-  const gravado = fs.readFileSync(path.join(CFG_DIR, 'config.json'), 'utf8');
-  assert.equal(gravado.includes(SENHA), false);
-  const cfg = JSON.parse(gravado);
-  assert.equal(cfg.seadRequisitante, 'FULANA DE TAL');
-  assert.equal(cfg.seadCidadeOrigemPadrao, 'Joao Pessoa');
-  assert.equal(cfg.port, 0);
-
-  const ruim = await chamar(CANAIS.SALVAR_PARAMETROS, { requisitante: 5 });
-  assert.equal(ruim.ok, false);
+test('a configuração do Agent é só credencial: nenhum canal grava parâmetro do pedido', async () => {
+  const { chamar, handlers } = montar();
+  assert.deepEqual([...handlers.keys()].sort(), Object.values(CANAIS).sort());
+  assert.equal(Object.values(CANAIS).some(c => /parametro/i.test(c)), false);
+  const lido = await chamar(CANAIS.LER);
+  assert.deepEqual(Object.keys(lido).sort(), ['credenciais', 'ok']);
+  const antes = fs.readFileSync(path.join(CFG_DIR, 'config.json'), 'utf8');
+  await chamar(CANAIS.SALVAR_CREDENCIAIS, { usuario: 'u', senha: SENHA, requisitante: 'X', objetivo: 'Y' });
+  assert.equal(fs.readFileSync(path.join(CFG_DIR, 'config.json'), 'utf8'), antes);
 });
 
 test('pedido de teste vai para a mesma fila, módulo pedido-diaria, payload intacto', async () => {
@@ -138,23 +126,17 @@ test('pedido de teste vai para a mesma fila, módulo pedido-diaria, payload inta
   assert.deepEqual(enfileirados, [['pedido-diaria', payload]]);
 });
 
-test('/status informa só booleanos de prontidão', () => {
-  const cofre = { configuradas: () => true };
-  const p = prontidao({ cofre, config: { seadRequisitante: 'FULANA DE TAL' } });
-  assert.deepEqual(p, { credenciaisConfiguradas: true, requisitanteConfigurado: true });
-  assert.deepEqual(
-    prontidao({ cofre: { configuradas: () => false }, config: { seadRequisitante: ' ' } }),
-    { credenciaisConfiguradas: false, requisitanteConfigurado: false },
-  );
+test('/status informa só o booleano de credenciais', () => {
+  assert.deepEqual(prontidao({ cofre: { configuradas: () => true } }), { credenciaisConfiguradas: true });
+  assert.deepEqual(prontidao({ cofre: { configuradas: () => false } }), { credenciaisConfiguradas: false });
 });
 
-test('/status por HTTP: booleanos presentes, nenhum valor de credencial ou requisitante', async (t) => {
+test('/status por HTTP: booleano presente, nenhum valor de credencial', async (t) => {
   const cofre = criarCofre({ arquivo: path.join(HOME, 'status.dat'), cripto: criptoFalsa() });
   cofre.salvar({ usuario: 'usuario-secreto', senha: SENHA });
   const app = express();
   app.use(criarRouter({
     cofre,
-    lerConfig: () => ({ seadRequisitante: 'REQUISITANTE SECRETO' }),
     checarNavegador: async () => ({ ok: true, canal: 'msedge' }),
   }));
   const srv = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
@@ -166,8 +148,8 @@ test('/status por HTTP: booleanos presentes, nenhum valor de credencial ou requi
   });
   const json = JSON.parse(corpo);
   assert.equal(json.credenciaisConfiguradas, true);
-  assert.equal(json.requisitanteConfigurado, true);
-  for (const v of [SENHA, 'usuario-secreto', 'REQUISITANTE SECRETO']) assert.equal(corpo.includes(v), false, v);
+  assert.equal('requisitanteConfigurado' in json, false);
+  for (const v of [SENHA, 'usuario-secreto']) assert.equal(corpo.includes(v), false, v);
 });
 
 test('não há rota HTTP para credenciais, configuração ou pedido de teste', async (t) => {

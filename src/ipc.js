@@ -14,22 +14,14 @@
 
 const { redigir } = require('./services/segredos');
 
+// A configuração do Agent é só usuário e senha do SEAD. Parâmetros do pedido
+// (requisitante, objetivo, justificativa, cidade de origem) vêm do site.
 const CANAIS = {
   LER:                'agent:configuracao:ler',
-  SALVAR_PARAMETROS:  'agent:parametros:salvar',
   SALVAR_CREDENCIAIS: 'agent:credenciais:salvar',
   APAGAR_CREDENCIAIS: 'agent:credenciais:apagar',
   PEDIDO_TESTE:       'agent:pedido-teste:disparar',
 };
-
-// Campo da tela → chave do config.json.
-const PARAMETROS = {
-  requisitante:        'seadRequisitante',
-  cidadeOrigemPadrao:  'seadCidadeOrigemPadrao',
-  objetivo:            'seadObjetivo',
-  justificativaPadrao: 'seadJustificativa',
-};
-const TAMANHO_MAXIMO = 4000;
 
 function remetenteValido(event, janela, origemUi) {
   try {
@@ -43,25 +35,17 @@ function remetenteValido(event, janela, origemUi) {
   }
 }
 
-function lerParametros(config) {
-  const r = {};
-  for (const [campo, chave] of Object.entries(PARAMETROS)) r[campo] = String(config[chave] ?? '');
-  return r;
-}
-
 /**
  * @param {object} d
  * @param {{handle(canal:string, fn:Function):void}} d.ipcMain
  * @param {() => object|null} d.janela       BrowserWindow do Agent
  * @param {() => string}      d.origemUi     ex.: http://localhost:9876
  * @param {object}            d.cofre        src/services/credenciais.js
- * @param {() => object}      d.lerConfig
- * @param {(parcial:object) => void} d.atualizarConfig
  * @param {(modulo:string, payload:object) => {status:number, body:object}} d.enfileirar
  */
-function registrarIpc({ ipcMain, janela, origemUi, cofre, lerConfig, atualizarConfig, enfileirar }) {
+function registrarIpc({ ipcMain, janela, origemUi, cofre, enfileirar }) {
   function estado() {
-    return { credenciais: cofre.resumo(), parametros: lerParametros(lerConfig()) };
+    return { credenciais: cofre.resumo() };
   }
 
   function tratar(canal, fn) {
@@ -78,20 +62,6 @@ function registrarIpc({ ipcMain, janela, origemUi, cofre, lerConfig, atualizarCo
   }
 
   tratar(CANAIS.LER, () => estado());
-
-  tratar(CANAIS.SALVAR_PARAMETROS, (p) => {
-    if (!p || typeof p !== 'object') throw new Error('Parâmetros inválidos.');
-    const parcial = {};
-    for (const [campo, chave] of Object.entries(PARAMETROS)) {
-      if (!(campo in p)) continue;
-      if (typeof p[campo] !== 'string') throw new Error(`Campo ${campo} deve ser texto.`);
-      const v = p[campo].trim();
-      if (v.length > TAMANHO_MAXIMO) throw new Error(`Campo ${campo} longo demais.`);
-      parcial[chave] = v;
-    }
-    atualizarConfig(parcial);
-    return estado();
-  });
 
   tratar(CANAIS.SALVAR_CREDENCIAIS, (c) => {
     if (!c || typeof c !== 'object') throw new Error('Credenciais inválidas.');
@@ -114,4 +84,4 @@ function registrarIpc({ ipcMain, janela, origemUi, cofre, lerConfig, atualizarCo
   });
 }
 
-module.exports = { registrarIpc, remetenteValido, CANAIS, PARAMETROS };
+module.exports = { registrarIpc, remetenteValido, CANAIS };

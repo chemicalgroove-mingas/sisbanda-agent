@@ -1,6 +1,6 @@
 {
   "name": "sisbanda-agent",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "SISBANDA Agent – Automação local da Polícia Civil da Paraíba",
   "author": "Banda de Música da Polícia Civil da Paraíba",
   "main": "src/main.js",

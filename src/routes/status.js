@@ -4,21 +4,19 @@ const express  = require('express');
 const { VERSION } = require('../versao');
 const { verificarNavegador } = require('../services/navegador');
 const { isBusy, listJobs } = require('../services/jobQueue');
-const { loadConfig } = require('../config');
 const { obterCofre } = require('../services/credenciais');
 
 /**
- * Prontidão para o pedido de diária. Só booleanos: nem usuário, nem senha,
- * nem nome do requisitante saem por HTTP.
+ * Prontidão para o pedido de diária. Só um booleano: nem usuário nem senha
+ * saem por HTTP. O resto do pedido vem do site.
  */
-function prontidao({ cofre, config }) {
+function prontidao({ cofre }) {
   return {
     credenciaisConfiguradas: cofre.configuradas() === true,
-    requisitanteConfigurado: String(config.seadRequisitante || '').trim() !== '',
   };
 }
 
-function criarRouter({ cofre = obterCofre(), lerConfig = loadConfig, checarNavegador = verificarNavegador } = {}) {
+function criarRouter({ cofre = obterCofre(), checarNavegador = verificarNavegador } = {}) {
   const router = express.Router();
 
   // O site consulta /status a cada 30 s. Só o SUCESSO fica em cache: se o
@@ -53,7 +51,7 @@ function criarRouter({ cofre = obterCofre(), lerConfig = loadConfig, checarNaveg
       ...(nav.ok ? {} : { browserError: nav.erro }),
       busy:             isBusy(),
       lastRun:          lastDone?.finishedAt ?? null,
-      ...prontidao({ cofre, config: lerConfig() }),
+      ...prontidao({ cofre }),
     });
   });
 

@@ -142,8 +142,6 @@ app.whenReady().then(() => {
       janela:   () => win,
       origemUi: () => origemUi,
       cofre:    obterCofre(),
-      lerConfig: loadConfig,
-      atualizarConfig,
       enfileirar,
     });
     criarJanela(porta, !iniciouOculto);

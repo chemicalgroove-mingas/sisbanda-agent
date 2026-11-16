@@ -19,25 +19,26 @@ const ORIGENS_PADRAO = [
 // Credenciais do SEAD NÃO moram aqui: ficam no cofre (src/services/credenciais.js),
 // cifradas pelo Windows. Nem o config.json nem variáveis de ambiente fornecem
 // usuário ou senha do SEAD.
+//
+// Parâmetros do pedido (requisitante, objetivo, justificativa, cidade de origem)
+// também NÃO moram aqui: vêm do site no payload (docs/contrato-pedido-diaria.md).
+const DEFAULT_JWT_SECRET = 'sisbanda-agent-secret';
 const DEFAULTS = {
   port:           9876,
   iniciarComWindows: true,
   allowedOrigins: ORIGENS_PADRAO,
-  jwtSecret:     process.env.AGENT_JWT_SECRET || 'sisbanda-agent-secret',
-  // Nome do requisitante exatamente como aparece no SEAD. Sem padrão: cada
-  // Agent é configurado por quem o usa.
-  seadRequisitante: '',
-  // Usada quando o integrante não tem lotação.
-  seadCidadeOrigemPadrao: '',
-  seadObjetivo:   'PARTICIPAR DE EVENTO',
-  seadJustificativa:
-    'Apresentação da Banda de Música da Polícia Civil do Estado da Paraíba em evento institucional, conforme informações constantes nos documentos anexos.',
+  jwtSecret:     process.env.AGENT_JWT_SECRET || DEFAULT_JWT_SECRET,
   janelaSequencial: process.env.SEAD_JANELAS_SEQUENCIAIS === '1',
 };
 
 // Chaves de versões antigas que nunca devem ser lidas do config.json.
 // seadUsuario/seadSenha: credenciais em texto puro, agora só no cofre.
-const CHAVES_IGNORADAS = ['agentVersion', 'seadUsuario', 'seadSenha'];
+// seadRequisitante/seadObjetivo/seadJustificativa/seadCidadeOrigemPadrao: da
+// versão 1.1.0; agora vêm do site. Se ficaram no arquivo, são ignoradas.
+const CHAVES_IGNORADAS = [
+  'agentVersion', 'seadUsuario', 'seadSenha',
+  'seadRequisitante', 'seadObjetivo', 'seadJustificativa', 'seadCidadeOrigemPadrao',
+];
 
 function ensureConfigDir() {
   if (!fs.existsSync(CONFIG_DIR)) {
@@ -87,4 +88,4 @@ function atualizarConfig(parcial) {
   return novo;
 }
 
-module.exports = { loadConfig, saveConfig, atualizarConfig, CONFIG_DIR, DEFAULTS, ORIGENS_PADRAO };
+module.exports = { loadConfig, saveConfig, atualizarConfig, CONFIG_DIR, DEFAULTS, ORIGENS_PADRAO, DEFAULT_JWT_SECRET };

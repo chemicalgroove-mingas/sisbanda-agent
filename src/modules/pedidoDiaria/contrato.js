@@ -1,14 +1,16 @@
 'use strict';
 
 /**
- * Contrato do payload do módulo 'pedido-diaria'. Documentado em
+ * Contrato do payload do módulo 'pedido-diaria' (protocolo 3). Documentado em
  * docs/contrato-pedido-diaria.md — mudar aqui é mudar lá.
  *
  * O mesmo validador atende o site (POST /api/run) e o "Pedido de teste" da
  * janela do Agent: os dois caminhos chegam à automação com o mesmo formato.
  *
- * Credencial, requisitante, objetivo e textos padrão NÃO fazem parte do
- * payload: vêm da configuração deste Agent. Campos desconhecidos são ignorados.
+ * TODO parâmetro do pedido vem do site: requisitante, objetivo, justificativa,
+ * cidade de origem de cada integrante. O Agent guarda só usuário e senha do
+ * SEAD (cofre) e não tem valor padrão para nada: campo faltando é recusado aqui,
+ * antes de qualquer navegador abrir. Campos desconhecidos são ignorados.
  */
 
 const TIPOS = ['ESTADUAL', 'NACIONAL', 'INTERNACIONAL'];
@@ -18,9 +20,10 @@ const UFS = [
 ];
 const RE_DATA_HORA = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
-function textoOuNulo(v) {
-  if (v === null || v === undefined) return null;
-  if (typeof v !== 'string') return undefined; // tipo errado
+// Texto obrigatório: string com algo além de espaço. Devolve o texto aparado,
+// ou null quando falta / tem tipo errado.
+function textoObrigatorio(v) {
+  if (typeof v !== 'string') return null;
   const t = v.trim();
   return t || null;
 }
@@ -43,13 +46,22 @@ function validarPedido(p) {
     return { ok: false, erros: ['payload deve ser um objeto.'] };
   }
 
+  const requisitante = textoObrigatorio(p.requisitante);
+  if (!requisitante) erros.push('requisitante é obrigatório.');
+
+  const objetivo = textoObrigatorio(p.objetivo);
+  if (!objetivo) erros.push('objetivo é obrigatório.');
+
+  const justificativa = textoObrigatorio(p.justificativa);
+  if (!justificativa) erros.push('justificativa é obrigatória.');
+
   const tipo = typeof p.tipoViagem === 'string' ? p.tipoViagem.trim().toUpperCase() : '';
   if (!TIPOS.includes(tipo)) erros.push('tipoViagem deve ser estadual, nacional ou internacional.');
 
   const uf = typeof p.destinoUF === 'string' ? p.destinoUF.trim().toUpperCase() : '';
   if (!UFS.includes(uf)) erros.push('destinoUF deve ser a sigla de uma UF (ex.: PB).');
 
-  const cidade = textoOuNulo(p.destinoCidade);
+  const cidade = textoObrigatorio(p.destinoCidade);
   if (!cidade) erros.push('destinoCidade é obrigatório.');
 
   const saidaOk   = dataHoraValida(p.dataSaida);
@@ -60,19 +72,17 @@ function validarPedido(p) {
     erros.push('dataRetorno não pode ser anterior a dataSaida.');
   }
 
-  const justificativa = textoOuNulo(p.justificativa);
-  if (justificativa === undefined) erros.push('justificativa deve ser texto ou null.');
-
   const integrantes = [];
   if (!Array.isArray(p.integrantes) || p.integrantes.length === 0) {
     erros.push('integrantes deve ser uma lista com ao menos um integrante.');
   } else {
     p.integrantes.forEach((it, i) => {
-      const nome    = it && typeof it === 'object' ? textoOuNulo(it.nome) : undefined;
-      const lotacao = it && typeof it === 'object' ? textoOuNulo(it.lotacao) : undefined;
-      if (!nome) erros.push(`integrantes[${i}].nome é obrigatório.`);
-      if (lotacao === undefined) erros.push(`integrantes[${i}].lotacao deve ser texto ou null.`);
-      if (nome && lotacao !== undefined) integrantes.push({ nome, lotacao });
+      const obj          = it && typeof it === 'object' ? it : {};
+      const nome         = textoObrigatorio(obj.nome);
+      const cidadeOrigem = textoObrigatorio(obj.cidadeOrigem);
+      if (!nome)         erros.push(`integrantes[${i}].nome é obrigatório.`);
+      if (!cidadeOrigem) erros.push(`integrantes[${i}].cidadeOrigem é obrigatória.`);
+      if (nome && cidadeOrigem) integrantes.push({ nome, cidadeOrigem });
     });
   }
 
@@ -80,12 +90,14 @@ function validarPedido(p) {
   return {
     ok: true,
     valor: {
+      requisitante,
+      objetivo,
+      justificativa,
       tipoViagem:    tipo,
       destinoUF:     uf,
       destinoCidade: cidade,
       dataSaida:     p.dataSaida,
       dataRetorno:   p.dataRetorno,
-      justificativa,
       integrantes,
     },
   };

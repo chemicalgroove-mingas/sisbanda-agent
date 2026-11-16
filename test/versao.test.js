@@ -50,6 +50,8 @@ test('versão do package.json é a fonte única; agentVersion antigo do config.j
 
   assert.equal((await getJson(port, '/ping')).version, PKG_VERSION);
   assert.equal((await getJson(port, '/version')).agent, PKG_VERSION);
+  // Protocolo 3: requisitante, objetivo, justificativa e cidade de origem no payload.
+  assert.equal((await getJson(port, '/version')).protocol, 3);
 });
 
 test('atualizarConfig grava só a chave alterada, sem congelar DEFAULTS no arquivo', () => {

@@ -64,7 +64,7 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
 </div>
 
 <div class="aviso-bar" id="avisoConfig" style="display:none">
-  <span id="avisoConfigTexto">Configure as credenciais do SEAD e o requisitante.</span>
+  <span id="avisoConfigTexto">Configure as credenciais do SEAD.</span>
   <a onclick="abrirAba('config')">Configurar</a>
 </div>
 
@@ -93,7 +93,6 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
       <div class="row"><span class="label">Playwright</span>    <span class="value" id="pwVersion">—</span></div>
       <div class="row"><span class="label">Navegador</span>     <span class="value" id="chromiumStatus">—</span></div>
       <div class="row"><span class="label">Credenciais SEAD</span><span class="value" id="credStatus">—</span></div>
-      <div class="row"><span class="label">Requisitante</span>  <span class="value" id="reqStatus">—</span></div>
       <div class="row"><span class="label">Status</span>        <span class="value" id="busyStatus">—</span></div>
       <div class="row"><span class="label">Última execução</span><span class="value" id="lastRun">—</span></div>
     </div>
@@ -137,29 +136,7 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
       <div class="msg" id="msgCred"></div>
     </div>
 
-    <div class="bloco">
-      <div class="section-title">Parâmetros do pedido</div>
-      <div class="campo">
-        <label for="cfgRequisitante">Requisitante (nome como aparece no SEAD)</label>
-        <input id="cfgRequisitante" spellcheck="false"/>
-      </div>
-      <div class="campo">
-        <label for="cfgCidadeOrigem">Cidade de origem padrão</label>
-        <input id="cfgCidadeOrigem" spellcheck="false"/>
-        <div class="dica">Usada quando o integrante não tem lotação.</div>
-      </div>
-      <div class="campo">
-        <label for="cfgObjetivo">Objetivo</label>
-        <input id="cfgObjetivo" spellcheck="false"/>
-      </div>
-      <div class="campo">
-        <label for="cfgJustificativa">Justificativa padrão</label>
-        <textarea id="cfgJustificativa" rows="4"></textarea>
-        <div class="dica">Usada quando o pedido chega sem justificativa.</div>
-      </div>
-      <button class="btn btn-gold" id="btnSalvarParam" onclick="salvarParametros()">Salvar parâmetros</button>
-      <div class="msg" id="msgParam"></div>
-    </div>
+    <div class="dica">Requisitante, objetivo, justificativa e cidade de origem vêm do SISBANDA junto com cada pedido.</div>
   </div>
 
   <!-- ── PEDIDO DE TESTE ────────────────────────────────────────────────── -->
@@ -172,9 +149,16 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
       <input id="tIntegrante" spellcheck="false"/>
     </div>
     <div class="campo">
-      <label for="tLotacao">Lotação</label>
-      <input id="tLotacao" spellcheck="false"/>
-      <div class="dica">Em branco: usa a cidade de origem padrão.</div>
+      <label for="tCidadeOrigem">Cidade de origem</label>
+      <input id="tCidadeOrigem" spellcheck="false"/>
+    </div>
+    <div class="campo">
+      <label for="tRequisitante">Requisitante (nome como aparece no SEAD)</label>
+      <input id="tRequisitante" spellcheck="false"/>
+    </div>
+    <div class="campo">
+      <label for="tObjetivo">Objetivo</label>
+      <input id="tObjetivo" spellcheck="false"/>
     </div>
     <div class="campo">
       <label for="tTipo">Tipo de viagem</label>
@@ -213,7 +197,7 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
     <div class="campo">
       <label for="tJustificativa">Justificativa</label>
       <textarea id="tJustificativa" rows="3"></textarea>
-      <div class="dica">Em branco: usa a justificativa padrão.</div>
+      <div class="dica">Todos os campos são obrigatórios; nada desta tela fica gravado no Agent.</div>
     </div>
     <button class="btn btn-gold" id="btnTeste" onclick="pedirConfirmacaoTeste()">Disparar pedido de teste</button>
     <div class="msg" id="msgTeste"></div>
@@ -306,7 +290,6 @@ async function refresh() {
     $('pwVersion').textContent    = vr.playwright || '—';
     $('chromiumStatus').textContent = sv.browserInstalled ? `✓ ${sv.browserChannel || 'Instalado'}` : '✗ Não encontrado';
     $('credStatus').textContent = sv.credenciaisConfiguradas ? '✓ Configuradas' : '✗ Não configuradas';
-    $('reqStatus').textContent  = sv.requisitanteConfigurado ? '✓ Configurado' : '✗ Não configurado';
     $('busyStatus').textContent   = sv.busy ? '⏳ Ocupado' : '✓ Disponível';
     $('lastRun').textContent      = sv.lastRun ? new Date(sv.lastRun).toLocaleString('pt-BR') : '—';
 
@@ -359,7 +342,6 @@ function mensagem(id, texto, ok) {
 
 function aplicarEstado(estado) {
   const c = estado.credenciais;
-  const p = estado.parametros;
   $('cofreIndisponivel').style.display = c.disponivel ? 'none' : 'block';
   $('senhaEstado').textContent = c.configuradas ? '✓ configurada' : '✗ não configurada';
   $('senhaEstado').style.color = c.configuradas ? '#4ade80' : '#f87171';
@@ -368,17 +350,9 @@ function aplicarEstado(estado) {
   $('cfgSenha').placeholder = c.configuradas ? 'Deixe em branco para manter a senha atual' : 'Digite a senha';
   $('btnApagarCred').disabled = !c.configuradas;
 
-  $('cfgRequisitante').value  = p.requisitante;
-  $('cfgCidadeOrigem').value  = p.cidadeOrigemPadrao;
-  $('cfgObjetivo').value      = p.objetivo;
-  $('cfgJustificativa').value = p.justificativaPadrao;
-
-  const faltam = [];
-  if (!c.configuradas) faltam.push('as credenciais do SEAD');
-  if (!p.requisitante.trim()) faltam.push('o requisitante');
-  $('avisoConfig').style.display = faltam.length ? 'flex' : 'none';
-  $('avisoConfigTexto').textContent = `Falta configurar ${faltam.join(' e ')}.`;
-  return faltam.length === 0;
+  $('avisoConfig').style.display = c.configuradas ? 'none' : 'flex';
+  $('avisoConfigTexto').textContent = 'Falta configurar as credenciais do SEAD.';
+  return c.configuradas;
 }
 
 async function carregarConfiguracao() {
@@ -407,33 +381,20 @@ async function apagarCredenciais() {
   refresh();
 }
 
-async function salvarParametros() {
-  $('btnSalvarParam').disabled = true;
-  const r = await ponte.salvarParametros({
-    requisitante:        $('cfgRequisitante').value,
-    cidadeOrigemPadrao:  $('cfgCidadeOrigem').value,
-    objetivo:            $('cfgObjetivo').value,
-    justificativaPadrao: $('cfgJustificativa').value,
-  });
-  $('btnSalvarParam').disabled = false;
-  if (!r.ok) return mensagem('msgParam', r.erro, false);
-  aplicarEstado(r);
-  mensagem('msgParam', 'Parâmetros salvos.', true);
-  refresh();
-}
-
 // ── Pedido de teste ───────────────────────────────────────────────────────
 // Mesmo formato que o site manda no POST /api/run (docs/contrato-pedido-diaria.md).
 function montarPedido() {
   return {
+    requisitante:  $('tRequisitante').value.trim(),
+    objetivo:      $('tObjetivo').value.trim(),
+    justificativa: $('tJustificativa').value.trim(),
     tipoViagem:    $('tTipo').value,
     destinoUF:     $('tUF').value,
     destinoCidade: $('tCidade').value.trim(),
     dataSaida:     `${$('tSaidaData').value}T${$('tSaidaHora').value}`,
     dataRetorno:   `${$('tRetornoData').value}T${$('tRetornoHora').value}`,
-    justificativa: $('tJustificativa').value.trim() || null,
     integrantes: [
-      { nome: $('tIntegrante').value.trim(), lotacao: $('tLotacao').value.trim() || null },
+      { nome: $('tIntegrante').value.trim(), cidadeOrigem: $('tCidadeOrigem').value.trim() },
     ],
   };
 }
