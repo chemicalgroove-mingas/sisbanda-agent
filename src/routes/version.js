@@ -5,7 +5,8 @@ const router   = express.Router();
 const { VERSION }      = require('../versao');
 const { getUpdateInfo } = require('../services/updater');
 
-const PROTOCOL_VERSION = 1;
+// 2: payload do pedido-diaria em docs/contrato-pedido-diaria.md e barreira de origem.
+const PROTOCOL_VERSION = 2;
 
 // GET /version
 router.get('/version', (_req, res) => {

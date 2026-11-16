@@ -3,13 +3,16 @@
 const path    = require('path');
 const os      = require('os');
 const winston = require('winston');
+const { redigir } = require('./segredos');
 
 const LOG_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'SisbandaAgent', 'logs');
 
 const { combine, timestamp, printf } = winston.format;
 
+// Última barreira: nenhum segredo registrado chega ao arquivo nem ao console,
+// venha a mensagem de onde vier.
 const fmt = printf(({ level, message, timestamp: ts }) =>
-  `${ts}  [${level.toUpperCase()}]  ${message}`
+  `${ts}  [${level.toUpperCase()}]  ${redigir(message)}`
 );
 
 const logger = winston.createLogger({

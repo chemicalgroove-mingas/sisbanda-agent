@@ -4,9 +4,8 @@ const express = require('express');
 const router  = express.Router();
 const jwt     = require('jsonwebtoken');
 const { loadConfig }   = require('../config');
-const { getModule, listModules } = require('../modules');
-const { criarJob, isBusy, iniciarJob, finalizarJob } = require('../services/jobQueue');
-const { emitirJobIniciado, emitirJobStep, emitirJobConcluido } = require('../ws');
+const { listModules } = require('../modules');
+const { enfileirar }  = require('../services/executor');
 
 function authMiddleware(req, res, next) {
   const header = req.headers['authorization'] || '';
@@ -25,41 +24,12 @@ router.get('/modules', (_req, res) => {
   res.json({ modules: listModules() });
 });
 
-// POST /api/run — executa um módulo
-router.post('/api/run', authMiddleware, async (req, res) => {
+// POST /api/run — executa um módulo (contrato do pedido-diaria em
+// docs/contrato-pedido-diaria.md)
+router.post('/api/run', authMiddleware, (req, res) => {
   const { module: moduleName, payload } = req.body || {};
-
-  if (!moduleName) {
-    return res.status(400).json({ error: 'Campo "module" é obrigatório.' });
-  }
-
-  const mod = getModule(moduleName);
-  if (!mod) {
-    return res.status(404).json({
-      error: `Módulo "${moduleName}" não encontrado.`,
-      available: listModules().map(m => m.name),
-    });
-  }
-
-  if (isBusy()) {
-    return res.status(409).json({ error: 'Agent ocupado. Aguarde o job atual terminar ou verifique GET /jobs.' });
-  }
-
-  const job = criarJob(moduleName, payload);
-  res.status(202).json({ jobId: job.id, status: 'pending' });
-
-  // Executa em background
-  setImmediate(async () => {
-    const onStep = iniciarJob(job, (step) => emitirJobStep(job.id, moduleName, step.message));
-    emitirJobIniciado(job);
-    try {
-      await mod.execute(payload || {}, onStep);
-      finalizarJob(job);
-    } catch (err) {
-      finalizarJob(job, err.message);
-    }
-    emitirJobConcluido(job);
-  });
+  const r = enfileirar(moduleName, payload);
+  res.status(r.status).json(r.body);
 });
 
 module.exports = router;

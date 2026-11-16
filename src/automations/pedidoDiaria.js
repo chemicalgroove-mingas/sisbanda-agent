@@ -3,14 +3,18 @@
 const { launchNavegador } = require('../services/navegador');
 const { setTimeout: sleep } = require('timers/promises');
 const path = require('path');
-const os   = require('os');
-const { loadConfig } = require('../config');
+const { loadConfig, CONFIG_DIR } = require('../config');
+const { obterCofre, MSG_INDISPONIVEL } = require('../services/credenciais');
+const { redigir } = require('../services/segredos');
+const { validarPedido } = require('../modules/pedidoDiaria/contrato');
 
 const LOGIN_URL    = 'https://sead.pb.gov.br/sgcda/app_Login/';
 const CADASTRO_URL = 'https://sead.pb.gov.br/sgcda/menu_diaria/menu_diaria.php';
-const SCREENSHOT_DIR = path.join(os.homedir(), 'AppData', 'Roaming', 'SisbandaAgent', 'screenshots');
 
-function cfg() { return loadConfig(); }
+const MSG_SEM_CREDENCIAIS =
+  'Credenciais do SEAD não configuradas. Abra a janela do SISBANDA Agent, aba Configuração, e cadastre usuário e senha.';
+const MSG_SEM_REQUISITANTE =
+  'Requisitante não configurado. Abra a janela do SISBANDA Agent, aba Configuração, e informe o requisitante como aparece no SEAD.';
 
 function textoParaAutocomplete(s) {
   s = String(s || '').trim();
@@ -60,7 +64,46 @@ function partesDataHora(iso) {
   return { data, hora: `${hh}:${mm}` };
 }
 
-async function selecionarPorTexto(frame, name, needle) {
+// ── Regras de preenchimento (puras, testadas) ────────────────────────────────
+
+/** Justificativa digitada no pedido > justificativa padrão do Agent. */
+function escolherJustificativa(pedido, exec) {
+  const digitada = String(pedido.justificativa || '').trim();
+  return digitada || String(exec.justificativaPadrao || '').trim();
+}
+
+/** Lotação do integrante > cidade de origem padrão do Agent. */
+function escolherCidadeOrigem(integrante, exec) {
+  const lotacao = String(integrante.lotacao || '').trim();
+  if (lotacao) return { cidade: lotacao, fonte: 'lotacao' };
+  const padrao = String(exec.cidadeOrigemPadrao || '').trim();
+  if (padrao) return { cidade: padrao, fonte: 'padrao' };
+  return { cidade: '', fonte: null };
+}
+
+/**
+ * Lê cofre e configuração ANTES de qualquer navegador abrir. Falta de
+ * credencial ou de requisitante encerra aqui, com mensagem clara.
+ */
+function prepararExecucao({ cofre, config }) {
+  if (!cofre.disponivel()) throw new Error(MSG_INDISPONIVEL);
+  const credenciais = cofre.lerParaAutomacao();
+  if (!credenciais) throw new Error(MSG_SEM_CREDENCIAIS);
+  const requisitante = String(config.seadRequisitante || '').trim();
+  if (!requisitante) throw new Error(MSG_SEM_REQUISITANTE);
+  return {
+    credenciais,
+    requisitante,
+    objetivo:            String(config.seadObjetivo || '').trim(),
+    justificativaPadrao: String(config.seadJustificativa || ''),
+    cidadeOrigemPadrao:  String(config.seadCidadeOrigemPadrao || ''),
+    janelaSequencial:    !!config.janelaSequencial,
+  };
+}
+
+// ── Passos no SEAD ───────────────────────────────────────────────────────────
+
+async function selecionarPorTexto(ctx, frame, name, needle) {
   if (!needle) return false;
   const ok = await frame.evaluate(({ name, n }) => {
     function sa(s) { return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
@@ -78,11 +121,11 @@ async function selecionarPorTexto(frame, name, needle) {
     }
     return false;
   }, { name, n: needle }).catch(() => false);
-  await sleep(400);
+  await ctx.esperar(400);
   return ok;
 }
 
-async function clicarSugestaoAutocomplete(frame, page, ref) {
+async function clicarSugestaoAutocomplete(ctx, frame, page, ref) {
   const r = semAcentos(ref).toLowerCase();
   if (!r) return false;
   const listas = [
@@ -100,7 +143,7 @@ async function clicarSugestaoAutocomplete(frame, page, ref) {
       const txt = (await item.textContent().catch(() => '')) || '';
       if (semAcentos(txt).toLowerCase().includes(r)) {
         await item.click();
-        await sleep(800);
+        await ctx.esperar(800);
         return true;
       }
     }
@@ -108,11 +151,11 @@ async function clicarSugestaoAutocomplete(frame, page, ref) {
   return false;
 }
 
-async function aguardarAutocomplete(frame, page, ref, ms = 90000) {
+async function aguardarAutocomplete(ctx, frame, page, ref, ms = 90000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
-    if (await clicarSugestaoAutocomplete(frame, page, ref)) return;
-    await sleep(500);
+    if (await clicarSugestaoAutocomplete(ctx, frame, page, ref)) return;
+    await ctx.esperar(500);
   }
   throw new Error(`Autocomplete não consolidou para "${ref}" em ${ms}ms.`);
 }
@@ -125,16 +168,15 @@ async function esperarMenu(page) {
   await page.waitForSelector('#item_1, a[id="item_1"], a:has-text("CADASTRAR")', { timeout: 35000 }).catch(() => {});
 }
 
-async function login(page) {
-  const { seadUsuario, seadSenha } = cfg();
+async function login(page, { usuario, senha }) {
   await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {});
 
-  await page.fill('input[type="text"]:visible, input[name*="login"]:visible', seadUsuario).catch(async () => {
+  await page.fill('input[type="text"]:visible, input[name*="login"]:visible', usuario).catch(async () => {
     const inputs = await page.$$('input[type="text"]');
-    if (inputs[0]) await inputs[0].fill(seadUsuario);
+    if (inputs[0]) await inputs[0].fill(usuario);
   });
-  await page.fill('input[type="password"]:visible', seadSenha);
+  await page.fill('input[type="password"]:visible', senha);
 
   const btn = page.locator('input[type="submit"], button[type="submit"], input[value*="Login"]').first();
   try { await btn.click({ timeout: 8000 }); } catch { await page.keyboard.press('Enter'); }
@@ -148,35 +190,35 @@ async function login(page) {
   }
 }
 
-async function posLogin(page) {
-  await sleep(1500);
+async function posLogin(ctx, page) {
+  await ctx.esperar(1500);
   const ok = page.url().includes('menu_diaria') && !(await dadosInvalidos(page));
   if (ok) { await esperarMenu(page); return; }
 
   await page.goto(CADASTRO_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForLoadState('networkidle', { timeout: 90000 }).catch(() => {});
-  await sleep(600);
+  await ctx.esperar(600);
 
   if (await dadosInvalidos(page)) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 90000 }).catch(() => {});
-    await sleep(600);
+    await ctx.esperar(600);
   }
   await esperarMenu(page);
 }
 
-async function abrirCadastroDiaria(page) {
+async function abrirCadastroDiaria(ctx, page) {
   await page.click('#item_1, a[id="item_1"]').catch(() => page.click('text=CADASTRAR'));
-  await sleep(600);
+  await ctx.esperar(600);
   await page.click('#item_10, a[id="item_10"]').catch(() => page.click('text=Cadastro de Diária'));
-  await sleep(1500);
+  await ctx.esperar(1500);
 
   const fh = await page.waitForSelector('#menu_diaria_iframe, iframe[name="menu_diaria_iframe"]', { timeout: 20000 }).catch(() => null);
   if (fh) {
     const f = await fh.contentFrame();
     if (f) await f.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
   }
-  await sleep(2500);
+  await ctx.esperar(2500);
 }
 
 async function obterFrame(page) {
@@ -184,19 +226,19 @@ async function obterFrame(page) {
   return (await fh.contentFrame()) || page.mainFrame();
 }
 
-async function preencherRequisitante(page) {
-  const { seadRequisitante } = cfg();
+async function preencherRequisitante(ctx, page) {
+  const { requisitante } = ctx.exec;
   const frame = await obterFrame(page);
   const campo = frame.locator('#id_ac_id_servidor_solicit');
   await campo.waitFor({ state: 'visible', timeout: 20000 });
   await campo.click();
   await campo.fill('');
-  await campo.pressSequentially(digitacaoAutocompleteSemAcento(seadRequisitante), { delay: 40 });
-  await aguardarAutocomplete(frame, page, seadRequisitante);
-  await sleep(500);
+  await campo.pressSequentially(digitacaoAutocompleteSemAcento(requisitante), { delay: 40 });
+  await aguardarAutocomplete(ctx, frame, page, requisitante);
+  await ctx.esperar(500);
 }
 
-async function preencherRequisitado(page, nomeCompleto) {
+async function preencherRequisitado(ctx, page, nomeCompleto) {
   const frame = await obterFrame(page);
   const campo = frame.locator(
     'input[name="id_servidor_autocomp"], input.sc-ui-autocomp-id_servidor'
@@ -205,18 +247,18 @@ async function preencherRequisitado(page, nomeCompleto) {
   await campo.click();
   await campo.fill('');
   await campo.pressSequentially(digitacaoAutocompleteSemAcento(nomeCompleto), { delay: 40 });
-  await aguardarAutocomplete(frame, page, nomeCompleto);
-  await sleep(500);
+  await aguardarAutocomplete(ctx, frame, page, nomeCompleto);
+  await ctx.esperar(500);
 }
 
-async function preencherDestino(page, pedido, musico) {
-  const { seadObjetivo } = cfg();
+async function preencherDestino(ctx, page, pedido, cidOrig) {
+  const { objetivo } = ctx.exec;
   const frame = await obterFrame(page);
 
   const aba = frame.getByText(/DIÁRIAS\s*\/\s*DESTINO/i).first();
   if (await aba.isVisible({ timeout: 4000 }).catch(() => false)) {
     await aba.click();
-    await sleep(700);
+    await ctx.esperar(700);
   }
 
   const selTipo = frame.locator('select[name="ds_tp_viagem"]');
@@ -238,27 +280,26 @@ async function preencherDestino(page, pedido, musico) {
     const s = document.querySelector('select[name="ds_est_origem"]');
     return s && s.options.length > 1;
   }, { timeout: 20000 }).catch(() => {});
-  await sleep(500);
-  await selEstOrig.selectOption({ label: 'Paraiba' }).catch(() => selecionarPorTexto(frame, 'ds_est_origem', 'paraiba'));
+  await ctx.esperar(500);
+  await selEstOrig.selectOption({ label: 'Paraiba' }).catch(() => selecionarPorTexto(ctx, frame, 'ds_est_origem', 'paraiba'));
 
-  // Cidade Origem (lotação do músico)
-  await sleep(1200);
+  // Cidade Origem (lotação do integrante ou cidade padrão do Agent)
+  await ctx.esperar(1200);
   await frame.waitForFunction(() => {
     const s = document.querySelector('select[name="ds_cid_origem"]');
     return s && s.options.length > 1;
   }, { timeout: 20000 }).catch(() => {});
-  await sleep(600);
-  const cidOrig = (musico.lotacao || pedido.cidadeOrigem || '').trim();
+  await ctx.esperar(600);
   if (cidOrig) {
-    const ok = await selecionarPorTexto(frame, 'ds_cid_origem', cidOrig);
-    if (!ok) await selecionarPorTexto(frame, 'ds_cid_origem', semAcentos(cidOrig).split(/\s+/)[0]);
+    const ok = await selecionarPorTexto(ctx, frame, 'ds_cid_origem', cidOrig);
+    if (!ok) await selecionarPorTexto(ctx, frame, 'ds_cid_origem', semAcentos(cidOrig).split(/\s+/)[0]);
   }
 
   // Estado Destino
   const selEstDest = frame.locator('select[name="ds_est_destino"]');
   const labDest = labelEstado(pedido.destinoUF);
-  await selEstDest.selectOption({ label: labDest }).catch(() => selecionarPorTexto(frame, 'ds_est_destino', labDest.toLowerCase()));
-  await sleep(1200);
+  await selEstDest.selectOption({ label: labDest }).catch(() => selecionarPorTexto(ctx, frame, 'ds_est_destino', labDest.toLowerCase()));
+  await ctx.esperar(1200);
 
   // Cidade Destino
   const cidDest = (pedido.destinoCidade || '').trim();
@@ -269,34 +310,35 @@ async function preencherDestino(page, pedido, musico) {
       const s = document.querySelector('select[name="ds_cid_destino_pricipal"]');
       return s && s.options.length > 1;
     }, { timeout: 25000 }).catch(() => {});
-    await sleep(800);
-    const ok = await selecionarPorTexto(frame, 'ds_cid_destino_pricipal', cidDest);
-    if (!ok) await selecionarPorTexto(frame, 'ds_cid_destino_pricipal', semAcentos(cidDest).split(/\s+/)[0]);
+    await ctx.esperar(800);
+    const ok = await selecionarPorTexto(ctx, frame, 'ds_cid_destino_pricipal', cidDest);
+    if (!ok) await selecionarPorTexto(ctx, frame, 'ds_cid_destino_pricipal', semAcentos(cidDest).split(/\s+/)[0]);
   }
 
   // Objetivo
-  const selObj = frame.locator('select[name="ds_objetio"]');
-  await selObj.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
-  await selObj.selectOption({ value: seadObjetivo })
-    .catch(() => selObj.selectOption({ label: seadObjetivo })
-    .catch(() => selecionarPorTexto(frame, 'ds_objetio', seadObjetivo)));
-  await sleep(500);
+  if (objetivo) {
+    const selObj = frame.locator('select[name="ds_objetio"]');
+    await selObj.waitFor({ state: 'visible', timeout: 12000 }).catch(() => {});
+    await selObj.selectOption({ value: objetivo })
+      .catch(() => selObj.selectOption({ label: objetivo })
+      .catch(() => selecionarPorTexto(ctx, frame, 'ds_objetio', objetivo)));
+    await ctx.esperar(500);
+  }
 }
 
-async function preencherJustificativa(page) {
-  const { seadJustificativa } = cfg();
+async function preencherJustificativa(ctx, page, texto) {
   const frame = await obterFrame(page);
 
   const abaJustif = frame.locator('a:has-text("JUSTIFICATIVA")').first();
   await abaJustif.waitFor({ state: 'visible', timeout: 12000 });
   await abaJustif.click();
-  await sleep(800);
+  await ctx.esperar(800);
 
   const textarea = frame.locator('textarea[name="ds_obs"], textarea#id_sc_field_ds_obs').first();
   await textarea.waitFor({ state: 'visible', timeout: 12000 });
   await textarea.click();
-  await textarea.fill(seadJustificativa);
-  await sleep(400);
+  await textarea.fill(texto);
+  await ctx.esperar(400);
 }
 
 async function exibirMensagemFinal(page) {
@@ -335,64 +377,124 @@ async function exibirMensagemFinal(page) {
   }));
 }
 
-async function salvarScreenshot(page, nomeCompleto) {
+// Esvazia todo campo de senha, em todos os frames, antes de fotografar a tela.
+async function limparCamposDeSenha(page) {
+  const frames = typeof page.frames === 'function' ? page.frames() : [page.mainFrame()];
+  for (const f of frames) {
+    await f.evaluate(() => {
+      document.querySelectorAll('input[type="password"]').forEach(i => { i.value = ''; });
+    }).catch(() => {});
+  }
+}
+
+async function salvarScreenshot(ctx, page, nomeCompleto) {
   try {
+    await limparCamposDeSenha(page);
     const ts   = new Date().toISOString().replace(/[:.]/g, '-');
-    const nome = semAcentos(nomeCompleto).replace(/\s+/g, '_');
-    const file = require('path').join(SCREENSHOT_DIR, `${nome}_${ts}.png`);
+    const nome = semAcentos(nomeCompleto).replace(/[^A-Za-z0-9]+/g, '_');
+    const file = path.join(ctx.dirScreenshots, `${nome}_${ts}.png`);
     await page.screenshot({ path: file, fullPage: true });
   } catch {}
 }
 
-async function abrirJanelaIntegrante(pedido, integrante, onStatus) {
-  const nomeCompleto = integrante.musico ? integrante.musico.nome : integrante.nome;
+async function abrirJanelaIntegrante(ctx, pedido, integrante, onStatus) {
+  const nomeCompleto = integrante.nome;
+  // Toda mensagem que sai daqui é redigida: um erro do navegador pode ecoar o
+  // valor que estava sendo digitado.
+  const emitir = (ev) => onStatus?.({
+    ...ev,
+    ...(ev.erro    ? { erro:    redigir(ev.erro) }    : {}),
+    ...(ev.detalhe ? { detalhe: redigir(ev.detalhe) } : {}),
+  });
   let browser;
+  let falhou = false;
   try {
-    ({ browser } = await launchNavegador({ headless: false, args: ['--start-maximized'] }));
+    ({ browser } = await ctx.lancar({ headless: false, args: ['--start-maximized'] }));
     const context = await browser.newContext({ viewport: null });
     const page    = await context.newPage();
 
-    onStatus?.({ integrante: nomeCompleto, status: 'login' });
-    await login(page);
-    await posLogin(page);
-    onStatus?.({ integrante: nomeCompleto, status: 'sessao_pronta' });
+    emitir({ integrante: nomeCompleto, status: 'login' });
+    await login(page, ctx.exec.credenciais);
+    await posLogin(ctx, page);
+    emitir({ integrante: nomeCompleto, status: 'sessao_pronta' });
 
-    onStatus?.({ integrante: nomeCompleto, status: 'abrindo' });
+    emitir({ integrante: nomeCompleto, status: 'abrindo' });
     try {
-      await abrirCadastroDiaria(page);
-      await preencherRequisitante(page);
-      await preencherRequisitado(page, nomeCompleto);
+      await abrirCadastroDiaria(ctx, page);
+      await preencherRequisitante(ctx, page);
+      await preencherRequisitado(ctx, page, nomeCompleto);
 
-      const musico = integrante.musico || integrante;
-      await preencherDestino(page, pedido, musico);
-      await preencherJustificativa(page);
+      const origem = escolherCidadeOrigem(integrante, ctx.exec);
+      if (origem.fonte === 'padrao') {
+        emitir({ integrante: nomeCompleto, status: 'aviso', detalhe: `sem lotação; cidade de origem padrão: ${origem.cidade}` });
+      } else if (!origem.fonte) {
+        emitir({ integrante: nomeCompleto, status: 'aviso', detalhe: 'sem lotação e sem cidade de origem padrão; Cidade Origem fica em branco' });
+      }
+      await preencherDestino(ctx, page, pedido, origem.cidade);
+      await preencherJustificativa(ctx, page, escolherJustificativa(pedido, ctx.exec));
       await exibirMensagemFinal(page);
 
       if (await dadosInvalidos(page)) {
-        onStatus?.({ integrante: nomeCompleto, status: 'erro', erro: 'Página mostrou Dados inválidos.' });
+        falhou = true;
+        emitir({ integrante: nomeCompleto, status: 'erro', erro: 'Página mostrou Dados inválidos.' });
       } else {
-        onStatus?.({ integrante: nomeCompleto, status: 'pronto' });
+        emitir({ integrante: nomeCompleto, status: 'pronto' });
       }
     } catch (err) {
-      await salvarScreenshot(page, nomeCompleto).catch(() => {});
-      onStatus?.({ integrante: nomeCompleto, status: 'erro', erro: err.message });
+      falhou = true;
+      await salvarScreenshot(ctx, page, nomeCompleto).catch(() => {});
+      emitir({ integrante: nomeCompleto, status: 'erro', erro: err.message });
     }
 
-    onStatus?.({ integrante: nomeCompleto, status: 'aguardando_usuario' });
+    emitir({ integrante: nomeCompleto, status: 'aguardando_usuario' });
     await new Promise(resolve => browser.on('disconnected', resolve));
   } catch (err) {
-    onStatus?.({ integrante: nomeCompleto, status: 'erro', erro: err.message });
+    falhou = true;
+    emitir({ integrante: nomeCompleto, status: 'erro', erro: err.message });
     await browser?.close().catch(() => {});
   }
+  return !falhou;
 }
 
-async function lancarDiarias(pedido, onStatus) {
-  const integrantes = pedido.integrantes;
-  if (cfg().janelaSequencial) {
-    for (const int of integrantes) await abrirJanelaIntegrante(pedido, int, onStatus);
+/**
+ * @param {object} pedidoBruto  payload no contrato de docs/contrato-pedido-diaria.md
+ * @param {(ev:object)=>void} onStatus
+ * @param {object} [deps]  injeção para testes: { cofre, config, lancar, esperar, dirScreenshots }
+ * @returns {Promise<{ total: number, comErro: number }>}
+ */
+async function lancarDiarias(pedidoBruto, onStatus, deps = {}) {
+  const v = validarPedido(pedidoBruto);
+  if (!v.ok) throw new Error(`Pedido inválido: ${v.erros.join(' ')}`);
+  const pedido = v.valor;
+
+  // Antes de qualquer navegador: sem credencial ou requisitante, para aqui.
+  const exec = prepararExecucao({
+    cofre:  deps.cofre  || obterCofre(),
+    config: deps.config || loadConfig(),
+  });
+
+  const ctx = {
+    exec,
+    lancar:         deps.lancar  || launchNavegador,
+    esperar:        deps.esperar || sleep,
+    dirScreenshots: deps.dirScreenshots || path.join(CONFIG_DIR, 'screenshots'),
+  };
+
+  const resultados = [];
+  if (exec.janelaSequencial) {
+    for (const int of pedido.integrantes) resultados.push(await abrirJanelaIntegrante(ctx, pedido, int, onStatus));
   } else {
-    await Promise.all(integrantes.map(int => abrirJanelaIntegrante(pedido, int, onStatus)));
+    resultados.push(...await Promise.all(pedido.integrantes.map(int => abrirJanelaIntegrante(ctx, pedido, int, onStatus))));
   }
+  return { total: resultados.length, comErro: resultados.filter(ok => !ok).length };
 }
 
-module.exports = { lancarDiarias };
+module.exports = {
+  lancarDiarias,
+  prepararExecucao,
+  escolherJustificativa,
+  escolherCidadeOrigem,
+  salvarScreenshot,
+  MSG_SEM_CREDENCIAIS,
+  MSG_SEM_REQUISITANTE,
+};

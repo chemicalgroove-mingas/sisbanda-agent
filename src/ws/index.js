@@ -3,23 +3,28 @@
 const { WebSocketServer } = require('ws');
 const logger = require('../services/logger');
 
+const IPS_LOCAIS = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+
 let wss = null;
 const clients = new Set();
 
-function iniciarWS(httpServer) {
-  wss = new WebSocketServer({ server: httpServer });
+// `barreira` (src/services/origem.js) recusa o handshake de origem estranha com
+// 403, antes de a conexão existir: a página nem chega a receber o "connected".
+function iniciarWS(httpServer, barreira) {
+  wss = new WebSocketServer({
+    server: httpServer,
+    verifyClient: (info, cb) => {
+      const ip = info.req.socket.remoteAddress || '';
+      if (!IPS_LOCAIS.includes(ip)) return cb(false, 403, 'Acesso externo não permitido.');
+      return barreira.verificarWs(info, cb);
+    },
+  });
 
   // O ws repassa aqui os erros do servidor HTTP (ex.: EADDRINUSE). Sem este
   // ouvinte, o erro vira exceção não tratada; quem trata é startServer().
   wss.on('error', () => {});
 
-  wss.on('connection', (ws, req) => {
-    const ip = req.socket.remoteAddress || '';
-    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip)) {
-      ws.close(1008, 'Forbidden');
-      return;
-    }
-
+  wss.on('connection', (ws) => {
     clients.add(ws);
     enviar(ws, { event: 'connected', message: 'SISBANDA Agent conectado.' });
 
@@ -27,7 +32,7 @@ function iniciarWS(httpServer) {
     ws.on('error', () => clients.delete(ws));
   });
 
-  logger.info('WebSocket iniciado em ws://localhost:9876');
+  logger.info('WebSocket iniciado.');
 }
 
 function enviar(ws, data) {

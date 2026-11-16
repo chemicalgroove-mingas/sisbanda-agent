@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, ipcMain } = require('electron');
 const path   = require('path');
 const os     = require('os');
 const logger = require('./services/logger');
@@ -8,6 +8,9 @@ const { startServer }        = require('./server');
 const { loadConfig, atualizarConfig } = require('./config');
 const { VERSION }            = require('./versao');
 const { verificarAtualizacao } = require('./services/updater');
+const { registrarIpc }         = require('./ipc');
+const { obterCofre }           = require('./services/credenciais');
+const { enfileirar }           = require('./services/executor');
 
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 const LOG_DIR   = path.join(os.homedir(), 'AppData', 'Roaming', 'SisbandaAgent', 'logs');
@@ -17,21 +20,40 @@ const iniciouOculto = process.argv.includes(ARG_OCULTO);
 
 let win  = null;
 let tray = null;
+let origemUi = null;   // http://localhost:<porta>, definida quando o servidor sobe
 
 // ── Janela principal ────────────────────────────────────────────────────────
 // Só é criada depois que o servidor está escutando: antes disso /ui não existe.
 function criarJanela(port, mostrar) {
   win = new BrowserWindow({
-    width:  460,
-    height: 560,
-    resizable: false,
+    width:  520,
+    height: 760,
+    minWidth: 460,
+    minHeight: 560,
     title: 'SISBANDA Agent',
     icon:  ICON_PATH,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      // A página só vê window.sisbandaAgent (src/preload.js).
+      preload:          path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration:  false,
+      sandbox:          true,
+    },
     show: false,
   });
 
-  win.loadURL(`http://localhost:${port}/ui`);
+  // A janela que tem acesso ao cofre nunca sai da UI do Agent: navegação para
+  // outro endereço é barrada e links externos abrem no navegador padrão.
+  win.webContents.on('will-navigate', (e, url) => {
+    try { if (new URL(url).origin === origemUi) return; } catch {}
+    e.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.toLowerCase().startsWith('https://')) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  win.loadURL(`${origemUi}/ui`);
   win.setMenuBarVisibility(false);
 
   if (mostrar) win.once('ready-to-show', () => win.show());
@@ -113,7 +135,18 @@ app.whenReady().then(() => {
 
   startServer(server => {
     logger.info('Servidor HTTP + WebSocket iniciados.');
-    criarJanela(server.address().port, !iniciouOculto);
+    const porta = server.address().port;
+    origemUi = `http://localhost:${porta}`;
+    registrarIpc({
+      ipcMain,
+      janela:   () => win,
+      origemUi: () => origemUi,
+      cofre:    obterCofre(),
+      lerConfig: loadConfig,
+      atualizarConfig,
+      enfileirar,
+    });
+    criarJanela(porta, !iniciouOculto);
     // Verifica atualização 5 s após start (não bloqueia inicialização)
     setTimeout(() => verificarAtualizacao().then(u => {
       if (u?.available) logger.info(`Atualização disponível: ${u.version}`);

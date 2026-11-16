@@ -5,22 +5,25 @@
 <title>SISBANDA Agent</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;padding:24px 16px;gap:16px}
-.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:28px 32px;width:100%;max-width:420px}
+body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;padding:20px 16px;gap:14px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px 28px;width:100%;max-width:460px}
 .logo{font-size:20px;font-weight:bold;color:#C9A64B;letter-spacing:1px}
-.subtitle{font-size:11px;color:#555;margin-top:2px;margin-bottom:20px}
+.subtitle{font-size:11px;color:#555;margin-top:2px;margin-bottom:16px}
 .row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:12px;border-bottom:1px solid #222}
 .row:last-child{border-bottom:none}
 .label{color:#777}
-.value{color:#eee;font-weight:500;text-align:right;max-width:200px;word-break:break-all}
+.value{color:#eee;font-weight:500;text-align:right;max-width:220px;word-break:break-all}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 .dot.green{background:#22c55e}.dot.yellow{background:#eab308}.dot.red{background:#ef4444}.dot.gray{background:#555}
 .status-chip{display:flex;align-items:center;font-size:13px;font-weight:600;gap:6px}
-.section-title{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;margin-top:4px}
+.section-title{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;margin-top:4px}
 .btn{width:100%;padding:9px;border:none;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;transition:opacity .2s;margin-top:6px}
-.btn-gold{background:#C9A64B;color:#111}.btn-gold:hover{opacity:.85}
-.btn-outline{background:transparent;border:1px solid #333;color:#888}.btn-outline:hover{color:#eee;border-color:#555}
-.log-box{background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#4ade80;max-height:120px;overflow-y:auto;margin-top:12px;line-height:1.7}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-gold{background:#C9A64B;color:#111}.btn-gold:hover:not(:disabled){opacity:.85}
+.btn-outline{background:transparent;border:1px solid #333;color:#888}.btn-outline:hover:not(:disabled){color:#eee;border-color:#555}
+.btn-danger{background:transparent;border:1px solid #5b1d1d;color:#f87171}.btn-danger:hover:not(:disabled){border-color:#f87171}
+.btn-row{display:flex;gap:8px}.btn-row .btn{flex:1}
+.log-box{background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#4ade80;max-height:160px;overflow-y:auto;margin-top:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
 .log-box .err{color:#f87171}
 .log-box .info{color:#94a3b8}
 .badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:99px;font-weight:bold}
@@ -28,158 +31,475 @@ body{font-family:Arial,sans-serif;background:#111;color:#eee;display:flex;flex-d
 .badge-yellow{background:#422006;color:#fbbf24}
 .badge-red{background:#2d1a1a;color:#f87171}
 .badge-gray{background:#1e1e1e;color:#666}
-.update-bar{background:#422006;border:1px solid #6b3300;border-radius:8px;padding:10px 14px;font-size:12px;color:#fbbf24;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.update-bar a{color:#fbbf24;font-weight:bold;text-decoration:underline;cursor:pointer}
+.update-bar,.aviso-bar{background:#422006;border:1px solid #6b3300;border-radius:8px;padding:10px 14px;font-size:12px;color:#fbbf24;display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:460px;width:100%}
+.update-bar a,.aviso-bar a{color:#fbbf24;font-weight:bold;text-decoration:underline;cursor:pointer}
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid #2a2a2a}
+.tab{background:none;border:none;color:#777;font-size:12px;font-weight:bold;padding:8px 10px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.ativa{color:#C9A64B;border-bottom-color:#C9A64B}
+.painel{display:none}.painel.ativo{display:block}
+.campo{margin-bottom:10px}
+.campo label{display:block;font-size:11px;color:#888;margin-bottom:4px}
+.campo input,.campo select,.campo textarea{width:100%;background:#0d0d0d;border:1px solid #2f2f2f;border-radius:6px;color:#eee;font-size:12px;padding:8px 9px;font-family:inherit}
+.campo textarea{resize:vertical;min-height:62px}
+.campo input:focus,.campo select:focus,.campo textarea:focus{outline:none;border-color:#C9A64B}
+.dica{font-size:10px;color:#666;margin-top:3px}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.bloco{border-top:1px solid #242424;padding-top:16px;margin-top:16px}
+.bloco:first-child{border-top:none;padding-top:0;margin-top:0}
+.msg{font-size:11px;margin-top:8px;min-height:14px}
+.msg.ok{color:#4ade80}.msg.err{color:#f87171}
+.indisponivel{font-size:12px;color:#fbbf24;background:#2a1d05;border:1px solid #6b3300;border-radius:6px;padding:10px;margin-bottom:12px}
+.modal-fundo{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:20px;z-index:10}
+.modal-fundo.aberto{display:flex}
+.modal{background:#1a1a1a;border:1px solid #6b5520;border-radius:10px;padding:22px;max-width:380px;width:100%}
+.modal p{font-size:14px;line-height:1.5;color:#eee;margin-bottom:16px}
 </style>
 </head>
 <body>
 
 <!-- Barra de atualização (oculta por padrão) -->
-<div class="update-bar" id="updateBar" style="display:none;max-width:420px;width:100%">
+<div class="update-bar" id="updateBar" style="display:none">
   <span>🟡 Nova versão disponível: <span id="updateVersion"></span></span>
   <a id="updateLink" href="#" target="_blank">Atualizar Agora</a>
+</div>
+
+<div class="aviso-bar" id="avisoConfig" style="display:none">
+  <span id="avisoConfigTexto">Configure as credenciais do SEAD e o requisitante.</span>
+  <a onclick="abrirAba('config')">Configurar</a>
 </div>
 
 <div class="card">
   <div class="logo">SISBANDA Agent</div>
   <div class="subtitle">Polícia Civil da Paraíba</div>
 
-  <div class="status-chip" id="statusChip">
-    <span class="dot gray" id="statusDot"></span>
-    <span id="statusText">Verificando...</span>
-    <span class="badge badge-gray" id="versionBadge">—</span>
+  <div class="tabs">
+    <button class="tab ativa" data-aba="status" onclick="abrirAba('status')">Status</button>
+    <button class="tab" data-aba="config" onclick="abrirAba('config')">Configuração</button>
+    <button class="tab" data-aba="teste" onclick="abrirAba('teste')">Pedido de teste</button>
   </div>
 
-  <div style="margin-top:20px">
-    <div class="section-title">Sistema</div>
-    <div class="row"><span class="label">Servidor</span>      <span class="value">http://localhost:9876</span></div>
-    <div class="row"><span class="label">WebSocket</span>     <span class="value" id="wsStatus">—</span></div>
-    <div class="row"><span class="label">Playwright</span>    <span class="value" id="pwVersion">—</span></div>
-    <div class="row"><span class="label">Chromium</span>      <span class="value" id="chromiumStatus">—</span></div>
-    <div class="row"><span class="label">Status</span>        <span class="value" id="busyStatus">—</span></div>
-    <div class="row"><span class="label">Última execução</span><span class="value" id="lastRun">—</span></div>
+  <!-- ── STATUS ─────────────────────────────────────────────────────────── -->
+  <div class="painel ativo" id="painel-status">
+    <div class="status-chip" id="statusChip">
+      <span class="dot gray" id="statusDot"></span>
+      <span id="statusText">Verificando...</span>
+      <span class="badge badge-gray" id="versionBadge">—</span>
+    </div>
+
+    <div style="margin-top:18px">
+      <div class="section-title">Sistema</div>
+      <div class="row"><span class="label">Servidor</span>      <span class="value" id="servidorUrl">—</span></div>
+      <div class="row"><span class="label">WebSocket</span>     <span class="value" id="wsStatus">—</span></div>
+      <div class="row"><span class="label">Playwright</span>    <span class="value" id="pwVersion">—</span></div>
+      <div class="row"><span class="label">Navegador</span>     <span class="value" id="chromiumStatus">—</span></div>
+      <div class="row"><span class="label">Credenciais SEAD</span><span class="value" id="credStatus">—</span></div>
+      <div class="row"><span class="label">Requisitante</span>  <span class="value" id="reqStatus">—</span></div>
+      <div class="row"><span class="label">Status</span>        <span class="value" id="busyStatus">—</span></div>
+      <div class="row"><span class="label">Última execução</span><span class="value" id="lastRun">—</span></div>
+    </div>
+
+    <div style="margin-top:18px">
+      <div class="section-title">Jobs recentes</div>
+      <div id="jobsList" style="font-size:12px;color:#555">—</div>
+    </div>
+
+    <div class="log-box" id="logBox"><span class="info">Aguardando eventos...</span></div>
+
+    <button class="btn btn-gold" onclick="refresh()" style="margin-top:14px">Verificar Status</button>
+    <button class="btn btn-outline" onclick="runDiagnostics()">Diagnóstico</button>
   </div>
 
-  <div style="margin-top:20px">
-    <div class="section-title">Módulos</div>
-    <div id="modulesList" style="font-size:12px;color:#555">Carregando...</div>
+  <!-- ── CONFIGURAÇÃO ───────────────────────────────────────────────────── -->
+  <div class="painel" id="painel-config">
+    <div class="indisponivel" id="semPonte" style="display:none">
+      Esta tela só funciona dentro da janela do SISBANDA Agent.
+    </div>
+    <div class="indisponivel" id="cofreIndisponivel" style="display:none">
+      A proteção de dados do Windows não está disponível: as credenciais não podem ser guardadas.
+    </div>
+
+    <div class="bloco">
+      <div class="section-title">Credenciais do SEAD</div>
+      <div class="row" style="margin-bottom:10px"><span class="label">Senha</span><span class="value" id="senhaEstado">—</span></div>
+      <div class="campo">
+        <label for="cfgUsuario">Usuário do SEAD</label>
+        <input id="cfgUsuario" autocomplete="off" spellcheck="false"/>
+      </div>
+      <div class="campo">
+        <label for="cfgSenha">Senha do SEAD</label>
+        <input id="cfgSenha" type="password" autocomplete="new-password"/>
+        <div class="dica" id="senhaDica">Guardada só neste computador, cifrada pelo Windows. Não passa pelo site.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" id="btnSalvarCred" onclick="salvarCredenciais()">Salvar credenciais</button>
+        <button class="btn btn-danger" id="btnApagarCred" onclick="apagarCredenciais()">Apagar</button>
+      </div>
+      <div class="msg" id="msgCred"></div>
+    </div>
+
+    <div class="bloco">
+      <div class="section-title">Parâmetros do pedido</div>
+      <div class="campo">
+        <label for="cfgRequisitante">Requisitante (nome como aparece no SEAD)</label>
+        <input id="cfgRequisitante" spellcheck="false"/>
+      </div>
+      <div class="campo">
+        <label for="cfgCidadeOrigem">Cidade de origem padrão</label>
+        <input id="cfgCidadeOrigem" spellcheck="false"/>
+        <div class="dica">Usada quando o integrante não tem lotação.</div>
+      </div>
+      <div class="campo">
+        <label for="cfgObjetivo">Objetivo</label>
+        <input id="cfgObjetivo" spellcheck="false"/>
+      </div>
+      <div class="campo">
+        <label for="cfgJustificativa">Justificativa padrão</label>
+        <textarea id="cfgJustificativa" rows="4"></textarea>
+        <div class="dica">Usada quando o pedido chega sem justificativa.</div>
+      </div>
+      <button class="btn btn-gold" id="btnSalvarParam" onclick="salvarParametros()">Salvar parâmetros</button>
+      <div class="msg" id="msgParam"></div>
+    </div>
   </div>
 
-  <div style="margin-top:20px">
-    <div class="section-title">Jobs recentes</div>
-    <div id="jobsList" style="font-size:12px;color:#555">—</div>
+  <!-- ── PEDIDO DE TESTE ────────────────────────────────────────────────── -->
+  <div class="painel" id="painel-teste">
+    <div class="indisponivel" id="semPonteTeste" style="display:none">
+      Esta tela só funciona dentro da janela do SISBANDA Agent.
+    </div>
+    <div class="campo">
+      <label for="tIntegrante">Integrante (nome completo como no SEAD)</label>
+      <input id="tIntegrante" spellcheck="false"/>
+    </div>
+    <div class="campo">
+      <label for="tLotacao">Lotação</label>
+      <input id="tLotacao" spellcheck="false"/>
+      <div class="dica">Em branco: usa a cidade de origem padrão.</div>
+    </div>
+    <div class="campo">
+      <label for="tTipo">Tipo de viagem</label>
+      <select id="tTipo">
+        <option value="estadual" selected>Estadual</option>
+        <option value="nacional">Nacional</option>
+        <option value="internacional">Internacional</option>
+      </select>
+    </div>
+    <div class="grade">
+      <div class="campo">
+        <label for="tUF">Destino UF</label>
+        <select id="tUF"></select>
+      </div>
+      <div class="campo">
+        <label for="tCidade">Destino cidade</label>
+        <input id="tCidade" spellcheck="false" value="Campina Grande"/>
+      </div>
+      <div class="campo">
+        <label for="tSaidaData">Saída — data</label>
+        <input id="tSaidaData" type="date"/>
+      </div>
+      <div class="campo">
+        <label for="tSaidaHora">Saída — hora</label>
+        <input id="tSaidaHora" type="time" value="08:00"/>
+      </div>
+      <div class="campo">
+        <label for="tRetornoData">Retorno — data</label>
+        <input id="tRetornoData" type="date"/>
+      </div>
+      <div class="campo">
+        <label for="tRetornoHora">Retorno — hora</label>
+        <input id="tRetornoHora" type="time" value="18:00"/>
+      </div>
+    </div>
+    <div class="campo">
+      <label for="tJustificativa">Justificativa</label>
+      <textarea id="tJustificativa" rows="3"></textarea>
+      <div class="dica">Em branco: usa a justificativa padrão.</div>
+    </div>
+    <button class="btn btn-gold" id="btnTeste" onclick="pedirConfirmacaoTeste()">Disparar pedido de teste</button>
+    <div class="msg" id="msgTeste"></div>
+    <div class="log-box" id="passosTeste"><span class="info">Os passos do pedido aparecem aqui.</span></div>
   </div>
+</div>
 
-  <div class="log-box" id="logBox"><span class="info">Aguardando eventos...</span></div>
-
-  <button class="btn btn-gold" onclick="refresh()" style="margin-top:16px">Verificar Status</button>
-  <button class="btn btn-outline" onclick="runDiagnostics()">Diagnóstico</button>
+<div class="modal-fundo" id="modalTeste">
+  <div class="modal">
+    <p>A automação só preenche. Confira tudo e clique em Salvar você mesmo.</p>
+    <div class="btn-row">
+      <button class="btn btn-outline" id="btnCancelarTeste" onclick="fecharConfirmacaoTeste()">Cancelar</button>
+      <button class="btn btn-gold" id="btnConfirmarTeste" onclick="dispararTeste()">Abrir o navegador</button>
+    </div>
+  </div>
 </div>
 
 <script>
-const PORT = 9876;
+const BASE = location.origin;
+const ponte = window.sisbandaAgent || null;
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 let ws = null;
+let jobTeste = null;
+// Eventos guardados por job: o job pode começar (e até falhar cedo) antes de a
+// resposta do IPC com o jobId chegar à tela.
+const eventosPorJob = new Map();
 
-function log(msg, type = '') {
-  const box = document.getElementById('logBox');
-  const line = document.createElement('div');
-  line.className = type;
-  const ts = new Date().toLocaleTimeString('pt-BR');
-  line.textContent = `[${ts}] ${msg}`;
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-  if (box.children.length > 80) box.removeChild(box.firstChild);
+const $ = (id) => document.getElementById(id);
+
+// ── Abas ──────────────────────────────────────────────────────────────────
+function abrirAba(nome) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('ativa', t.dataset.aba === nome));
+  document.querySelectorAll('.painel').forEach(p => p.classList.toggle('ativo', p.id === `painel-${nome}`));
 }
+
+// ── Log geral ─────────────────────────────────────────────────────────────
+function linha(boxId, msg, type = '') {
+  const box = $(boxId);
+  if (box.dataset.limpo !== '1') { box.textContent = ''; box.dataset.limpo = '1'; }
+  const l = document.createElement('div');
+  l.className = type;
+  l.textContent = `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`;
+  box.appendChild(l);
+  box.scrollTop = box.scrollHeight;
+  if (box.children.length > 120) box.removeChild(box.firstChild);
+}
+const log = (msg, type) => linha('logBox', msg, type);
 
 function conectarWS() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
-  ws = new WebSocket(`ws://localhost:${PORT}`);
-  ws.onopen  = () => { document.getElementById('wsStatus').textContent = '✓ Conectado'; log('WebSocket conectado.', 'info'); };
-  ws.onclose = () => { document.getElementById('wsStatus').textContent = '✗ Desconectado'; setTimeout(conectarWS, 5000); };
-  ws.onerror = () => { document.getElementById('wsStatus').textContent = '✗ Erro'; };
+  ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen  = () => { $('wsStatus').textContent = '✓ Conectado'; log('WebSocket conectado.', 'info'); };
+  ws.onclose = () => { $('wsStatus').textContent = '✗ Desconectado'; setTimeout(conectarWS, 5000); };
+  ws.onerror = () => { $('wsStatus').textContent = '✗ Erro'; };
   ws.onmessage = ({ data }) => {
-    try {
-      const ev = JSON.parse(data);
-      if (ev.event === 'step')         log(`[${ev.module}] ${ev.message}`);
-      if (ev.event === 'job_started')  log(`Job iniciado: ${ev.module}`, 'info');
-      if (ev.event === 'job_finished') { log(`Job concluído: ${ev.module}`, 'info'); refresh(); }
-      if (ev.event === 'job_error')    { log(`Erro: ${ev.error}`, 'err'); refresh(); }
-    } catch {}
+    let ev; try { ev = JSON.parse(data); } catch { return; }
+    if (ev.event === 'step')         log(`[${ev.module}] ${ev.message}`);
+    if (ev.event === 'job_started')  log(`Job iniciado: ${ev.module}`, 'info');
+    if (ev.event === 'job_finished') { log(`Job concluído: ${ev.module}`, 'info'); refresh(); }
+    if (ev.event === 'job_error')    { log(`Erro: ${ev.error}`, 'err'); refresh(); }
+
+    if (ev.jobId) {
+      if (!eventosPorJob.has(ev.jobId)) eventosPorJob.set(ev.jobId, []);
+      eventosPorJob.get(ev.jobId).push(ev);
+      if (eventosPorJob.size > 20) eventosPorJob.delete(eventosPorJob.keys().next().value);
+      if (jobTeste && ev.jobId === jobTeste) mostrarEventoTeste(ev);
+    }
   };
 }
 
+function mostrarEventoTeste(ev) {
+  if (ev.event === 'step')         linha('passosTeste', ev.message);
+  if (ev.event === 'job_finished') { linha('passosTeste', 'Pedido de teste concluído.', 'info'); fimTeste(); }
+  if (ev.event === 'job_error')    { linha('passosTeste', `Erro: ${ev.error}`, 'err'); fimTeste(); }
+}
+
+// ── Status ────────────────────────────────────────────────────────────────
 async function refresh() {
   try {
     const [sv, vr, jo] = await Promise.all([
-      fetch(`http://localhost:${PORT}/status`).then(r => r.json()),
-      fetch(`http://localhost:${PORT}/version`).then(r => r.json()),
-      fetch(`http://localhost:${PORT}/jobs`).then(r => r.json()),
+      fetch(`${BASE}/status`).then(r => r.json()),
+      fetch(`${BASE}/version`).then(r => r.json()),
+      fetch(`${BASE}/jobs`).then(r => r.json()),
     ]);
 
-    document.getElementById('statusDot').className  = 'dot green';
-    document.getElementById('statusText').textContent = 'Online';
-    document.getElementById('versionBadge').className = 'badge badge-green';
-    document.getElementById('versionBadge').textContent = `v${sv.version}`;
-    document.getElementById('pwVersion').textContent    = vr.playwright || '—';
-    document.getElementById('chromiumStatus').textContent = sv.browserInstalled ? '✓ Instalado' : '✗ Não encontrado';
-    document.getElementById('busyStatus').textContent   = sv.busy ? '⏳ Ocupado' : '✓ Disponível';
-    document.getElementById('lastRun').textContent      = sv.lastRun ? new Date(sv.lastRun).toLocaleString('pt-BR') : '—';
+    $('statusDot').className  = 'dot green';
+    $('statusText').textContent = 'Online';
+    $('versionBadge').className = 'badge badge-green';
+    $('versionBadge').textContent = `v${sv.version}`;
+    $('pwVersion').textContent    = vr.playwright || '—';
+    $('chromiumStatus').textContent = sv.browserInstalled ? `✓ ${sv.browserChannel || 'Instalado'}` : '✗ Não encontrado';
+    $('credStatus').textContent = sv.credenciaisConfiguradas ? '✓ Configuradas' : '✗ Não configuradas';
+    $('reqStatus').textContent  = sv.requisitanteConfigurado ? '✓ Configurado' : '✗ Não configurado';
+    $('busyStatus').textContent   = sv.busy ? '⏳ Ocupado' : '✓ Disponível';
+    $('lastRun').textContent      = sv.lastRun ? new Date(sv.lastRun).toLocaleString('pt-BR') : '—';
 
-    // Módulos
-    const mods = document.getElementById('modulesList');
-    mods.innerHTML = '';
-    (vr.modules || []).forEach(m => {
-      const d = document.createElement('div');
-      d.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1a1a';
-      d.innerHTML = `<span style="color:#aaa">✓ ${m.description || m.name}</span><span style="color:#555">${m.version}</span>`;
-      mods.appendChild(d);
-    });
-    if (!vr.modules?.length) mods.textContent = '—';
-
-    // Jobs
-    const jobsEl = document.getElementById('jobsList');
+    const jobsEl = $('jobsList');
     const recentes = (jo.jobs || []).slice(0, 5);
     if (!recentes.length) { jobsEl.textContent = 'Nenhum job executado ainda.'; }
     else {
-      jobsEl.innerHTML = '';
+      jobsEl.textContent = '';
       recentes.forEach(j => {
         const cls = j.status === 'done' ? 'badge-green' : j.status === 'error' ? 'badge-red' : j.status === 'running' ? 'badge-yellow' : 'badge-gray';
         const d = document.createElement('div');
         d.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a1a1a;font-size:11px';
-        d.innerHTML = `<span style="color:#888">${j.module}</span><span class="badge ${cls}">${j.status}</span>`;
+        const m = document.createElement('span'); m.style.color = '#888'; m.textContent = j.module;
+        const b = document.createElement('span'); b.className = `badge ${cls}`; b.textContent = j.status;
+        d.append(m, b);
         jobsEl.appendChild(d);
       });
     }
 
-    // Update bar
     const upd = vr.update;
     if (upd?.available) {
-      document.getElementById('updateVersion').textContent = upd.version;
-      document.getElementById('updateLink').href = upd.downloadUrl || '#';
-      document.getElementById('updateBar').style.display = 'flex';
+      $('updateVersion').textContent = upd.version;
+      $('updateLink').href = upd.downloadUrl || '#';
+      $('updateBar').style.display = 'flex';
     }
-
   } catch {
-    document.getElementById('statusDot').className    = 'dot red';
-    document.getElementById('statusText').textContent = 'Offline';
-    document.getElementById('versionBadge').className = 'badge badge-red';
-    document.getElementById('versionBadge').textContent = 'offline';
+    $('statusDot').className    = 'dot red';
+    $('statusText').textContent = 'Offline';
+    $('versionBadge').className = 'badge badge-red';
+    $('versionBadge').textContent = 'offline';
   }
 }
 
 async function runDiagnostics() {
   log('Executando diagnóstico...', 'info');
   try {
-    const d = await fetch(`http://localhost:${PORT}/diagnostics`).then(r => r.json());
-    log(`Agent: ${d.agent ? '✓' : '✗'} | Playwright: ${d.playwright ? '✓' : '✗'} | Chromium: ${d.chromium ? '✓' : '✗'}`);
+    const d = await fetch(`${BASE}/diagnostics`).then(r => r.json());
+    log(`Agent: ${d.agent ? '✓' : '✗'} | Playwright: ${d.playwright ? '✓' : '✗'} | Navegador: ${d.chromium ? '✓ ' + (d.browserChannel || '') : '✗'}`);
     log(`Internet: ${d.internet ? '✓' : '✗'} | Escrita: ${d.writePermission ? '✓' : '✗'} | Disco livre: ${d.diskFreeMb ?? '?'} MB`);
     log(`Node: ${d.nodeVersion} | Plataforma: ${d.platform}/${d.arch}`);
   } catch { log('Falha ao obter diagnóstico.', 'err'); }
 }
 
-conectarWS();
-refresh();
-setInterval(refresh, 30000);
+// ── Configuração (só pela ponte IPC) ──────────────────────────────────────
+function mensagem(id, texto, ok) {
+  const el = $(id);
+  el.textContent = texto || '';
+  el.className = `msg ${ok ? 'ok' : 'err'}`;
+}
+
+function aplicarEstado(estado) {
+  const c = estado.credenciais;
+  const p = estado.parametros;
+  $('cofreIndisponivel').style.display = c.disponivel ? 'none' : 'block';
+  $('senhaEstado').textContent = c.configuradas ? '✓ configurada' : '✗ não configurada';
+  $('senhaEstado').style.color = c.configuradas ? '#4ade80' : '#f87171';
+  $('cfgUsuario').value = c.usuario || '';
+  $('cfgSenha').value = '';
+  $('cfgSenha').placeholder = c.configuradas ? 'Deixe em branco para manter a senha atual' : 'Digite a senha';
+  $('btnApagarCred').disabled = !c.configuradas;
+
+  $('cfgRequisitante').value  = p.requisitante;
+  $('cfgCidadeOrigem').value  = p.cidadeOrigemPadrao;
+  $('cfgObjetivo').value      = p.objetivo;
+  $('cfgJustificativa').value = p.justificativaPadrao;
+
+  const faltam = [];
+  if (!c.configuradas) faltam.push('as credenciais do SEAD');
+  if (!p.requisitante.trim()) faltam.push('o requisitante');
+  $('avisoConfig').style.display = faltam.length ? 'flex' : 'none';
+  $('avisoConfigTexto').textContent = `Falta configurar ${faltam.join(' e ')}.`;
+  return faltam.length === 0;
+}
+
+async function carregarConfiguracao() {
+  const r = await ponte.lerConfiguracao();
+  if (!r.ok) { mensagem('msgCred', r.erro, false); return false; }
+  return aplicarEstado(r);
+}
+
+async function salvarCredenciais() {
+  $('btnSalvarCred').disabled = true;
+  const r = await ponte.salvarCredenciais({ usuario: $('cfgUsuario').value, senha: $('cfgSenha').value });
+  $('cfgSenha').value = '';
+  $('btnSalvarCred').disabled = false;
+  if (!r.ok) return mensagem('msgCred', r.erro, false);
+  aplicarEstado(r);
+  mensagem('msgCred', 'Credenciais salvas.', true);
+  refresh();
+}
+
+async function apagarCredenciais() {
+  if (!confirm('Apagar usuário e senha do SEAD deste computador?')) return;
+  const r = await ponte.apagarCredenciais();
+  if (!r.ok) return mensagem('msgCred', r.erro, false);
+  aplicarEstado(r);
+  mensagem('msgCred', 'Credenciais apagadas.', true);
+  refresh();
+}
+
+async function salvarParametros() {
+  $('btnSalvarParam').disabled = true;
+  const r = await ponte.salvarParametros({
+    requisitante:        $('cfgRequisitante').value,
+    cidadeOrigemPadrao:  $('cfgCidadeOrigem').value,
+    objetivo:            $('cfgObjetivo').value,
+    justificativaPadrao: $('cfgJustificativa').value,
+  });
+  $('btnSalvarParam').disabled = false;
+  if (!r.ok) return mensagem('msgParam', r.erro, false);
+  aplicarEstado(r);
+  mensagem('msgParam', 'Parâmetros salvos.', true);
+  refresh();
+}
+
+// ── Pedido de teste ───────────────────────────────────────────────────────
+// Mesmo formato que o site manda no POST /api/run (docs/contrato-pedido-diaria.md).
+function montarPedido() {
+  return {
+    tipoViagem:    $('tTipo').value,
+    destinoUF:     $('tUF').value,
+    destinoCidade: $('tCidade').value.trim(),
+    dataSaida:     `${$('tSaidaData').value}T${$('tSaidaHora').value}`,
+    dataRetorno:   `${$('tRetornoData').value}T${$('tRetornoHora').value}`,
+    justificativa: $('tJustificativa').value.trim() || null,
+    integrantes: [
+      { nome: $('tIntegrante').value.trim(), lotacao: $('tLotacao').value.trim() || null },
+    ],
+  };
+}
+
+function pedirConfirmacaoTeste() {
+  mensagem('msgTeste', '', true);
+  $('modalTeste').classList.add('aberto');
+}
+function fecharConfirmacaoTeste() { $('modalTeste').classList.remove('aberto'); }
+
+async function dispararTeste() {
+  fecharConfirmacaoTeste();
+  $('btnTeste').disabled = true;
+  const box = $('passosTeste'); box.textContent = ''; box.dataset.limpo = '1';
+  const r = await ponte.dispararPedidoTeste(montarPedido());
+  if (!r.ok) {
+    mensagem('msgTeste', r.erro, false);
+    $('btnTeste').disabled = false;
+    return;
+  }
+  jobTeste = r.jobId;
+  linha('passosTeste', `Job ${r.jobId.slice(0, 8)} na fila.`, 'info');
+  (eventosPorJob.get(r.jobId) || []).forEach(mostrarEventoTeste);
+}
+
+function fimTeste() {
+  jobTeste = null;
+  $('btnTeste').disabled = false;
+}
+
+function dataISO(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function iniciarFormularioTeste() {
+  UFS.forEach(uf => {
+    const o = document.createElement('option');
+    o.value = uf; o.textContent = uf; o.selected = uf === 'PB';
+    $('tUF').appendChild(o);
+  });
+  const d = new Date(); d.setDate(d.getDate() + 7);
+  $('tSaidaData').value = dataISO(d);
+  $('tRetornoData').value = dataISO(d);
+}
+
+// ── Início ────────────────────────────────────────────────────────────────
+async function iniciar() {
+  $('servidorUrl').textContent = BASE;
+  iniciarFormularioTeste();
+  conectarWS();
+  refresh();
+  setInterval(refresh, 30000);
+
+  if (!ponte) {
+    $('semPonte').style.display = 'block';
+    $('semPonteTeste').style.display = 'block';
+    document.querySelectorAll('#painel-config input, #painel-config textarea, #painel-config button, #btnTeste')
+      .forEach(el => { el.disabled = true; });
+    return;
+  }
+  const pronto = await carregarConfiguracao();
+  if (!pronto) abrirAba('config');
+}
+
+iniciar();
 </script>
 </body>
 </html>
