@@ -6,6 +6,7 @@ const cors    = require('cors');
 const path    = require('path');
 const logger  = require('./services/logger');
 const { loadConfig }  = require('./config');
+const { VERSION }     = require('./versao');
 const { iniciarWS }   = require('./ws');
 const { router: statusRouter }  = require('./routes/status');
 const { router: versionRouter } = require('./routes/version');
@@ -40,16 +41,23 @@ function createApp() {
   return app;
 }
 
-function startServer(onReady) {
+// onReady(server) só é chamado depois que a porta está de fato escutando.
+// onError(err) recebe falhas de listen (ex.: porta 9876 já ocupada).
+function startServer(onReady, onError) {
   const cfg    = loadConfig();
   const app    = createApp();
   const server = http.createServer(app);
 
   iniciarWS(server);
 
+  server.on('error', err => {
+    logger.error(`Servidor não iniciou: ${err.code || ''} ${err.message}`);
+    onError?.(err);
+  });
+
   server.listen(cfg.port, '127.0.0.1', () => {
-    logger.info(`SISBANDA Agent v${cfg.agentVersion} — http://localhost:${cfg.port}`);
-    onReady?.();
+    logger.info(`SISBANDA Agent v${VERSION} — http://localhost:${server.address().port}`);
+    onReady?.(server);
   });
 
   return server;

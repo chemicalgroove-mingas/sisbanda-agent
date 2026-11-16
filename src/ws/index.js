@@ -9,6 +9,10 @@ const clients = new Set();
 function iniciarWS(httpServer) {
   wss = new WebSocketServer({ server: httpServer });
 
+  // O ws repassa aqui os erros do servidor HTTP (ex.: EADDRINUSE). Sem este
+  // ouvinte, o erro vira exceção não tratada; quem trata é startServer().
+  wss.on('error', () => {});
+
   wss.on('connection', (ws, req) => {
     const ip = req.socket.remoteAddress || '';
     if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip)) {

@@ -3,6 +3,7 @@
 const https  = require('https');
 const logger = require('./logger');
 const { loadConfig } = require('../config');
+const { VERSION }    = require('../versao');
 
 let updateInfo = null; // { version, downloadUrl, mandatory, checked }
 
@@ -36,7 +37,7 @@ async function verificarAtualizacao() {
   const url = cfg.updateUrl || 'https://sisbanda.pcpb.pb.gov.br/agent/latest.json';
   try {
     const remote = await fetchJson(url);
-    const novidade = maisNovo(remote.version, cfg.agentVersion);
+    const novidade = maisNovo(remote.version, VERSION);
     updateInfo = {
       version:     remote.version,
       downloadUrl: remote.downloadUrl || '',

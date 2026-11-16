@@ -2,19 +2,18 @@
 
 const express  = require('express');
 const router   = express.Router();
-const { loadConfig }   = require('../config');
+const { VERSION }      = require('../versao');
 const { getUpdateInfo } = require('../services/updater');
 
 const PROTOCOL_VERSION = 1;
 
 // GET /version
 router.get('/version', (_req, res) => {
-  const cfg = loadConfig();
   let playwrightVersion = 'unknown';
   try { playwrightVersion = require('playwright/package.json').version; } catch {}
 
   res.json({
-    agent:    cfg.agentVersion,
+    agent:    VERSION,
     protocol: PROTOCOL_VERSION,
     playwright: playwrightVersion,
     update: getUpdateInfo(),
