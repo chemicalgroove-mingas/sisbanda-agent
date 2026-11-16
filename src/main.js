@@ -1,23 +1,30 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require('electron');
 const path   = require('path');
 const os     = require('os');
 const logger = require('./services/logger');
 const { startServer }        = require('./server');
-const { loadConfig }         = require('./config');
-const { verificarAtualizacao, getUpdateInfo } = require('./services/updater');
+const { loadConfig, atualizarConfig } = require('./config');
+const { VERSION }            = require('./versao');
+const { verificarAtualizacao } = require('./services/updater');
 
 const ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 const LOG_DIR   = path.join(os.homedir(), 'AppData', 'Roaming', 'SisbandaAgent', 'logs');
-const PORT      = loadConfig().port;
-const VERSION   = loadConfig().agentVersion;
+
+// Inicialização com o Windows: valor em HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
+// Nome fixo (o mesmo do installer/setup.iss) para o desinstalador saber o que remover.
+// Quando o Windows abre o Agent, ele sobe só na bandeja, sem janela.
+const NOME_INICIALIZACAO = 'SisbandaAgent';
+const ARG_OCULTO         = '--oculto';
+const iniciouOculto      = process.argv.includes(ARG_OCULTO);
 
 let win  = null;
 let tray = null;
 
 // ── Janela principal ────────────────────────────────────────────────────────
-function criarJanela() {
+// Só é criada depois que o servidor está escutando: antes disso /ui não existe.
+function criarJanela(port, mostrar) {
   win = new BrowserWindow({
     width:  460,
     height: 560,
@@ -28,15 +35,34 @@ function criarJanela() {
     show: false,
   });
 
-  win.loadURL(`http://localhost:${PORT}/ui`);
+  win.loadURL(`http://localhost:${port}/ui`);
   win.setMenuBarVisibility(false);
 
-  win.once('ready-to-show', () => win.show());
+  if (mostrar) win.once('ready-to-show', () => win.show());
 
   // Fechar minimiza para bandeja, não encerra
   win.on('close', e => {
     e.preventDefault();
     win.hide();
+  });
+}
+
+function mostrarJanela() {
+  if (!win) return;
+  win.show();
+  win.focus();
+}
+
+// ── Inicialização com o Windows ─────────────────────────────────────────────
+function aplicarInicioComWindows(ativo) {
+  // Em desenvolvimento (`npm start`) o executável é o electron.exe genérico:
+  // registrar isso no Run seria lixo no registro do desenvolvedor.
+  if (!app.isPackaged) return;
+  app.setLoginItemSettings({
+    openAtLogin: ativo,
+    name: NOME_INICIALIZACAO,
+    path: process.execPath,
+    args: [ARG_OCULTO],
   });
 }
 
@@ -49,11 +75,23 @@ function criarTray() {
   const menu = Menu.buildFromTemplate([
     {
       label: 'Abrir',
-      click: () => { win.show(); win.focus(); },
+      click: mostrarJanela,
     },
     {
       label: 'Ver Logs',
       click: () => shell.openPath(LOG_DIR),
+    },
+    { type: 'separator' },
+    {
+      label: 'Iniciar com o Windows',
+      type: 'checkbox',
+      checked: loadConfig().iniciarComWindows !== false,
+      enabled: app.isPackaged,
+      click: item => {
+        atualizarConfig({ iniciarComWindows: item.checked });
+        aplicarInicioComWindows(item.checked);
+        logger.info(`Iniciar com o Windows: ${item.checked ? 'ativado' : 'desativado'}`);
+      },
     },
     { type: 'separator' },
     {
@@ -68,7 +106,7 @@ function criarTray() {
   ]);
 
   tray.setContextMenu(menu);
-  tray.on('double-click', () => { win.show(); win.focus(); });
+  tray.on('double-click', mostrarJanela);
 }
 
 // ── Inicialização ────────────────────────────────────────────────────────────
@@ -77,18 +115,28 @@ app.whenReady().then(() => {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) { app.quit(); return; }
 
-  app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
+  app.on('second-instance', mostrarJanela);
 
-  startServer(() => {
+  aplicarInicioComWindows(loadConfig().iniciarComWindows !== false);
+  criarTray();
+
+  startServer(server => {
     logger.info('Servidor HTTP + WebSocket iniciados.');
+    criarJanela(server.address().port, !iniciouOculto);
     // Verifica atualização 5 s após start (não bloqueia inicialização)
     setTimeout(() => verificarAtualizacao().then(u => {
       if (u?.available) logger.info(`Atualização disponível: ${u.version}`);
     }), 5000);
+  }, err => {
+    const porta = loadConfig().port;
+    dialog.showErrorBox(
+      'SISBANDA Agent',
+      err.code === 'EADDRINUSE'
+        ? `A porta ${porta} já está em uso por outro programa. O Agent não pôde iniciar.`
+        : `O Agent não pôde iniciar: ${err.message}`
+    );
+    app.exit(1);
   });
-
-  criarJanela();
-  criarTray();
 });
 
 app.on('window-all-closed', e => e.preventDefault());
