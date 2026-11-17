@@ -14,7 +14,9 @@ process.env.HOME = HOME;
 const CFG_DIR = path.join(HOME, 'AppData', 'Roaming', 'SisbandaAgent');
 fs.mkdirSync(CFG_DIR, { recursive: true });
 const SEGREDO_JWT = 'segredo-jwt-do-teste-a3';
-fs.writeFileSync(path.join(CFG_DIR, 'config.json'), JSON.stringify({ port: 0, jwtSecret: SEGREDO_JWT }));
+// Os testes HTTP daqui exercitam o modo que confere o token (exigirToken: true);
+// o padrão publicado (não conferir) está em test/exigirToken.test.js.
+fs.writeFileSync(path.join(CFG_DIR, 'config.json'), JSON.stringify({ port: 0, jwtSecret: SEGREDO_JWT, exigirToken: true }));
 
 const jwt = require('jsonwebtoken');
 const winston = require('winston');

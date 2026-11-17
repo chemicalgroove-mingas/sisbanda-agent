@@ -25,10 +25,11 @@ const ORIGENS_PADRAO = [
 const DEFAULT_JWT_SECRET = 'sisbanda-agent-secret';
 const DEFAULTS = {
   port:           9876,
-  // exigirToken: só o booleano false desliga a conferência do token em /api/run
-  // (ver tokenExigido). Existe para testar nesta máquina antes de o backend
-  // assinar com AGENT_JWT_SECRET. Padrão seguro: exige.
-  exigirToken:    true,
+  // exigirToken: o Agent publicado NÃO confere o token do site em /api/run.
+  // A proteção é o site (botão e token só para administrador e
+  // coordenador_administrativo) mais a barreira de origem (services/origem.js),
+  // que vale sempre. "exigirToken": true no config.json liga a conferência.
+  exigirToken:    false,
   iniciarComWindows: true,
   allowedOrigins: ORIGENS_PADRAO,
   jwtSecret:     process.env.AGENT_JWT_SECRET || DEFAULT_JWT_SECRET,
@@ -79,8 +80,9 @@ function loadConfig() {
   return { ...DEFAULTS, ...semIgnoradas(lerSalvo()) };
 }
 
-// Qualquer valor que não seja exatamente false (ausente, "false", 0, null)
-// mantém a exigência: nada sai inseguro por engano de digitação.
+// Com a chave ausente vale o padrão (false). Se alguém gravou a chave, qualquer
+// valor que não seja exatamente false ("false", 0, null) liga a exigência:
+// erro de digitação nunca desliga uma conferência pedida.
 function tokenExigido(cfg = loadConfig()) {
   return cfg.exigirToken !== false;
 }

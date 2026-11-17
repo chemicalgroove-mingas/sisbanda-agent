@@ -1,7 +1,8 @@
 'use strict';
 
-// exigirToken (config.json): só o booleano false desliga a conferência do token
-// em POST /api/run. A barreira de origem continua valendo de qualquer jeito.
+// exigirToken (config.json): o padrão do Agent publicado é NÃO conferir o token
+// do site em POST /api/run. "exigirToken": true liga a conferência. A barreira
+// de origem e de Host continua valendo de qualquer jeito.
 
 const test   = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,13 +22,13 @@ const SEGREDO_JWT = 'segredo-jwt-do-teste-exigir-token';
 const gravarConfig = (extra) =>
   fs.writeFileSync(CFG_FILE, JSON.stringify({ port: 0, jwtSecret: SEGREDO_JWT, ...extra }));
 
-// O Agent parte com exigirToken = false (é o cenário desta máquina).
-gravarConfig({ exigirToken: false });
+// O Agent parte com a chave ausente: é o config.json de quem instala o Agent.
+gravarConfig({});
 
 const jwt     = require('jsonwebtoken');
 const winston = require('winston');
 const logger  = require('../src/services/logger');
-const { tokenExigido, loadConfig } = require('../src/config');
+const { tokenExigido, loadConfig, DEFAULTS } = require('../src/config');
 const { listJobs } = require('../src/services/jobQueue');
 
 const linhasLog = [];
@@ -52,7 +53,7 @@ test.after(async () => {
   await new Promise(r => server.close(r));
   try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {}
 });
-test.afterEach(() => gravarConfig({ exigirToken: false }));
+test.afterEach(() => gravarConfig({}));
 
 function pedir({ method = 'POST', rota = '/api/run', corpo, token, origin, extra = {} }) {
   return new Promise((resolve, reject) => {
@@ -82,9 +83,8 @@ function pedir({ method = 'POST', rota = '/api/run', corpo, token, origin, extra
 
 // ── Leitura da opção ─────────────────────────────────────────────────────────
 
-test('tokenExigido: ausente → true (padrão seguro)', () => {
-  assert.equal(tokenExigido({}), true);
-  assert.equal(tokenExigido({ exigirToken: undefined }), true);
+test('padrão do Agent publicado: exigirToken = false', () => {
+  assert.equal(DEFAULTS.exigirToken, false);
 });
 
 test('tokenExigido: só o booleano false desliga; "false", 0, null, "" continuam exigindo', () => {
@@ -94,9 +94,14 @@ test('tokenExigido: só o booleano false desliga; "false", 0, null, "" continuam
   }
 });
 
-test('config.json sem a chave → loadConfig traz exigirToken = true', () => {
+test('config.json sem a chave → loadConfig traz exigirToken = false', () => {
   fs.writeFileSync(CFG_FILE, JSON.stringify({ port: 0 }));
-  assert.equal(loadConfig().exigirToken, true);
+  assert.equal(loadConfig().exigirToken, false);
+  assert.equal(tokenExigido(), false);
+});
+
+test('config.json com "exigirToken": true → tokenExigido() = true', () => {
+  gravarConfig({ exigirToken: true });
   assert.equal(tokenExigido(), true);
 });
 
@@ -123,10 +128,17 @@ test('true + sem token → 401', async () => {
   assert.equal(r.status, 401);
 });
 
-test('chave ausente no config.json → exige token (401)', async () => {
+test('chave ausente no config.json → não confere: token qualquer segue para o payload (400)', async () => {
   fs.writeFileSync(CFG_FILE, JSON.stringify({ port: 0, jwtSecret: SEGREDO_JWT }));
   const r = await pedir({ corpo: INVALIDO, token: 'token-qualquer', origin: SITE });
-  assert.equal(r.status, 401);
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, 'Payload inválido.');
+});
+
+test('"exigirToken": false explícito → sem token segue para o payload (400)', async () => {
+  gravarConfig({ exigirToken: false });
+  const r = await pedir({ corpo: INVALIDO, origin: SITE });
+  assert.equal(r.status, 400);
 });
 
 test('exigirToken = "false" (texto) → continua exigindo (401)', async () => {
@@ -145,7 +157,7 @@ test('true + token certo → segue para a validação do payload (400)', async (
 
 // ── exigirToken = false ──────────────────────────────────────────────────────
 
-test('false + sem token → segue para a validação do payload (400), sem job', async () => {
+test('padrão + sem token → segue para a validação do payload (400), sem job', async () => {
   const antes = listJobs().length;
   const r = await pedir({ corpo: INVALIDO, origin: SITE });
   assert.equal(r.status, 400);
@@ -154,7 +166,7 @@ test('false + sem token → segue para a validação do payload (400), sem job',
   assert.equal(listJobs().length, antes);
 });
 
-test('false + token qualquer → segue para a validação do payload (400), sem job', async () => {
+test('padrão + token qualquer → segue para a validação do payload (400), sem job', async () => {
   const antes = listJobs().length;
   const r = await pedir({ corpo: INVALIDO, token: 'token-qualquer', origin: SITE });
   assert.equal(r.status, 400);
@@ -162,14 +174,14 @@ test('false + token qualquer → segue para a validação do payload (400), sem 
   assert.equal(listJobs().length, antes);
 });
 
-test('false NÃO desliga a barreira de origem: origem estranha → 403, sem job', async () => {
+test('padrão NÃO desliga a barreira de origem: origem estranha → 403, sem job', async () => {
   const antes = listJobs().length;
   const r = await pedir({ corpo: INVALIDO, origin: EVIL });
   assert.equal(r.status, 403);
   assert.equal(listJobs().length, antes);
 });
 
-test('false NÃO desliga a barreira de origem: preflight de origem estranha → 403', async () => {
+test('padrão NÃO desliga a barreira de origem: preflight de origem estranha → 403', async () => {
   const r = await pedir({
     method: 'OPTIONS', origin: EVIL,
     extra: { 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,content-type' },
@@ -177,14 +189,14 @@ test('false NÃO desliga a barreira de origem: preflight de origem estranha → 
   assert.equal(r.status, 403);
 });
 
-test('false NÃO desliga a barreira de Host (DNS rebinding) → 403', async () => {
+test('padrão NÃO desliga a barreira de Host (DNS rebinding) → 403', async () => {
   const r = await pedir({ corpo: INVALIDO, extra: { host: `evil.example:${port}` } });
   assert.equal(r.status, 403);
 });
 
 // ── Visibilidade ─────────────────────────────────────────────────────────────
 
-test('/status informa tokenExigido: false quando desligado e true quando ligado', async () => {
+test('/status informa tokenExigido: false no padrão e true quando ligado', async () => {
   let r = await pedir({ method: 'GET', rota: '/status' });
   assert.equal(r.status, 200);
   assert.equal(r.body.tokenExigido, false);
@@ -194,8 +206,10 @@ test('/status informa tokenExigido: false quando desligado e true quando ligado'
   assert.equal(r.body.tokenExigido, true);
 });
 
-test('partida com exigirToken = false registra aviso no log', () => {
-  const avisos = linhasLog.filter(l => l.level === 'warn' && /exigirToken = false/.test(l.msg));
-  assert.equal(avisos.length, 1);
-  assert.match(avisos[0].msg, /NÃO confere o token/);
+test('partida no padrão: log informa (info, não warn) que o token não é conferido', () => {
+  const linhas = linhasLog.filter(l => l.msg.includes('Token do site em POST /api/run'));
+  assert.equal(linhas.length, 1);
+  assert.equal(linhas[0].level, 'info');
+  assert.ok(linhas[0].msg.includes('não conferido (exigirToken = false)'), linhas[0].msg);
+  assert.equal(linhasLog.filter(l => l.level === 'warn' && /exigirToken/.test(l.msg)).length, 0);
 });

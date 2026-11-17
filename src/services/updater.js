@@ -5,7 +5,13 @@ const logger = require('./logger');
 const { loadConfig } = require('../config');
 const { VERSION }    = require('../versao');
 
-let updateInfo = null; // { version, downloadUrl, mandatory, checked }
+// O backend do site publica a versão corrente do Agent:
+//   GET /api/agent/info → { version, protocol, download }
+// "download" é um caminho relativo ao backend (/api/agent/download, que
+// redireciona para a Release do GitHub). config.json pode trocar a URL (updateUrl).
+const URL_INFO_PADRAO = 'https://sisbanda-backend.onrender.com/api/agent/info';
+
+let updateInfo = null; // { version, downloadUrl, mandatory, available, checked }
 
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
@@ -32,15 +38,28 @@ function maisNovo(remote, local) {
   return rPat > lPat;
 }
 
-async function verificarAtualizacao() {
+// Endereço absoluto do instalador. Aceita "download" (formato do backend,
+// relativo ou absoluto) e "downloadUrl" (formato antigo).
+function enderecoDownload(remote, urlInfo) {
+  const bruto = remote.download || remote.downloadUrl;
+  if (!bruto || typeof bruto !== 'string') return '';
+  try { return new URL(bruto, urlInfo).href; } catch { return ''; }
+}
+
+/**
+ * @param {object} [deps] só para testes: { buscar, versaoLocal }
+ */
+async function verificarAtualizacao({ buscar = fetchJson, versaoLocal = VERSION } = {}) {
   const cfg = loadConfig();
-  const url = cfg.updateUrl || 'https://sisbanda.pcpb.pb.gov.br/agent/latest.json';
+  const url = cfg.updateUrl || URL_INFO_PADRAO;
   try {
-    const remote = await fetchJson(url);
-    const novidade = maisNovo(remote.version, VERSION);
+    const remote = await buscar(url);
+    if (!remote || typeof remote.version !== 'string') throw new Error('Resposta sem versão');
+    // Versão publicada menor ou igual à instalada → nada a oferecer.
+    const novidade = maisNovo(remote.version, versaoLocal);
     updateInfo = {
       version:     remote.version,
-      downloadUrl: remote.downloadUrl || '',
+      downloadUrl: enderecoDownload(remote, url),
       mandatory:   !!remote.mandatory,
       available:   novidade,
       checked:     new Date().toISOString(),
@@ -57,4 +76,4 @@ async function verificarAtualizacao() {
 
 function getUpdateInfo() { return updateInfo; }
 
-module.exports = { verificarAtualizacao, getUpdateInfo };
+module.exports = { verificarAtualizacao, getUpdateInfo, maisNovo, URL_INFO_PADRAO };

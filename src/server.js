@@ -71,10 +71,7 @@ function startServer(onReady, onError) {
   server.listen(cfg.port, '127.0.0.1', () => {
     logger.info(`SISBANDA Agent v${VERSION} — http://localhost:${server.address().port}`);
     logger.info(`Origens permitidas: ${[...barreira.permitidas()].join(', ')}`);
-    if (!tokenExigido(cfg)) {
-      logger.warn('ATENÇÃO: exigirToken = false no config.json — POST /api/run NÃO confere o token. ' +
-                  'Só para desenvolvimento nesta máquina; volte para true antes de publicar.');
-    }
+    logger.info(`Token do site em POST /api/run: ${tokenExigido(cfg) ? 'conferido' : 'não conferido'} (exigirToken = ${tokenExigido(cfg)}).`);
     onReady?.(server);
   });
 
