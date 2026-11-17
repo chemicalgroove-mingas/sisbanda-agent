@@ -5,7 +5,7 @@ const http    = require('http');
 const cors    = require('cors');
 const path    = require('path');
 const logger  = require('./services/logger');
-const { loadConfig }  = require('./config');
+const { loadConfig, tokenExigido } = require('./config');
 const { VERSION }     = require('./versao');
 const { iniciarWS }   = require('./ws');
 const { criarBarreira } = require('./services/origem');
@@ -71,6 +71,10 @@ function startServer(onReady, onError) {
   server.listen(cfg.port, '127.0.0.1', () => {
     logger.info(`SISBANDA Agent v${VERSION} — http://localhost:${server.address().port}`);
     logger.info(`Origens permitidas: ${[...barreira.permitidas()].join(', ')}`);
+    if (!tokenExigido(cfg)) {
+      logger.warn('ATENÇÃO: exigirToken = false no config.json — POST /api/run NÃO confere o token. ' +
+                  'Só para desenvolvimento nesta máquina; volte para true antes de publicar.');
+    }
     onReady?.(server);
   });
 

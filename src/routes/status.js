@@ -5,6 +5,7 @@ const { VERSION } = require('../versao');
 const { verificarNavegador } = require('../services/navegador');
 const { isBusy, listJobs } = require('../services/jobQueue');
 const { obterCofre } = require('../services/credenciais');
+const { tokenExigido } = require('../config');
 
 /**
  * Prontidão para o pedido de diária. Só um booleano: nem usuário nem senha
@@ -16,7 +17,7 @@ function prontidao({ cofre }) {
   };
 }
 
-function criarRouter({ cofre = obterCofre(), checarNavegador = verificarNavegador } = {}) {
+function criarRouter({ cofre = obterCofre(), checarNavegador = verificarNavegador, exigeToken = () => tokenExigido() } = {}) {
   const router = express.Router();
 
   // O site consulta /status a cada 30 s. Só o SUCESSO fica em cache: se o
@@ -52,6 +53,7 @@ function criarRouter({ cofre = obterCofre(), checarNavegador = verificarNavegado
       busy:             isBusy(),
       lastRun:          lastDone?.finishedAt ?? null,
       ...prontidao({ cofre }),
+      tokenExigido:     exigeToken(),
     });
   });
 

@@ -3,16 +3,20 @@
 const express = require('express');
 const router  = express.Router();
 const jwt     = require('jsonwebtoken');
-const { loadConfig }   = require('../config');
+const { loadConfig, tokenExigido } = require('../config');
 const { listModules } = require('../modules');
 const { enfileirar }  = require('../services/executor');
 
+// A barreira de origem (src/services/origem.js) roda antes, no app inteiro:
+// exigirToken = false NÃO a desliga.
 function authMiddleware(req, res, next) {
+  const cfg = loadConfig();
+  if (!tokenExigido(cfg)) return next();
   const header = req.headers['authorization'] || '';
   const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Token ausente.' });
   try {
-    jwt.verify(token, loadConfig().jwtSecret);
+    jwt.verify(token, cfg.jwtSecret);
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido ou expirado.' });

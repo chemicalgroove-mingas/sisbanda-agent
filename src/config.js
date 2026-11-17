@@ -25,6 +25,10 @@ const ORIGENS_PADRAO = [
 const DEFAULT_JWT_SECRET = 'sisbanda-agent-secret';
 const DEFAULTS = {
   port:           9876,
+  // exigirToken: só o booleano false desliga a conferência do token em /api/run
+  // (ver tokenExigido). Existe para testar nesta máquina antes de o backend
+  // assinar com AGENT_JWT_SECRET. Padrão seguro: exige.
+  exigirToken:    true,
   iniciarComWindows: true,
   allowedOrigins: ORIGENS_PADRAO,
   jwtSecret:     process.env.AGENT_JWT_SECRET || DEFAULT_JWT_SECRET,
@@ -75,6 +79,12 @@ function loadConfig() {
   return { ...DEFAULTS, ...semIgnoradas(lerSalvo()) };
 }
 
+// Qualquer valor que não seja exatamente false (ausente, "false", 0, null)
+// mantém a exigência: nada sai inseguro por engano de digitação.
+function tokenExigido(cfg = loadConfig()) {
+  return cfg.exigirToken !== false;
+}
+
 function saveConfig(cfg) {
   ensureConfigDir();
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(semIgnoradas(cfg), null, 2), 'utf8');
@@ -88,4 +98,4 @@ function atualizarConfig(parcial) {
   return novo;
 }
 
-module.exports = { loadConfig, saveConfig, atualizarConfig, CONFIG_DIR, DEFAULTS, ORIGENS_PADRAO, DEFAULT_JWT_SECRET };
+module.exports = { loadConfig, tokenExigido, saveConfig, atualizarConfig, CONFIG_DIR, DEFAULTS, ORIGENS_PADRAO, DEFAULT_JWT_SECRET };
